@@ -4,6 +4,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AdminLayout } from "@/components/AdminLayout";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Organizations from "./pages/Organizations";
 import Subscriptions from "./pages/Subscriptions";
@@ -19,16 +21,26 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AdminLayout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/organizations" element={<Organizations />} />
-            <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/audit-logs" element={<AuditLogs />} />
-            <Route path="/settings" element={<SystemSettings />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AdminLayout>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <AdminLayout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/organizations" element={<Organizations />} />
+                    <Route path="/subscriptions" element={<Subscriptions />} />
+                    <Route path="/audit-logs" element={<AuditLogs />} />
+                    <Route path="/settings" element={<SystemSettings />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
