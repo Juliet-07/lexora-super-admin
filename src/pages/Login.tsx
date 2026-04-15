@@ -94,7 +94,7 @@ const Login = () => {
         </Card>
 
         <p className="text-center text-xs text-muted-foreground">
-          Lexora Platform v2.0 · Secure Admin Access
+          Secure Admin Access
         </p>
       </div>
     </div>

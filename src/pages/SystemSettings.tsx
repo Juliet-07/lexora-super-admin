@@ -42,7 +42,7 @@ export default function SystemSettings() {
       <Tabs defaultValue="modules">
         <TabsList className="bg-muted">
           <TabsTrigger value="modules">Modules</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          {/* <TabsTrigger value="integrations">Integrations</TabsTrigger> */}
           <TabsTrigger value="frameworks">Compliance Frameworks</TabsTrigger>
           <TabsTrigger value="risk">Risk Rules</TabsTrigger>
         </TabsList>

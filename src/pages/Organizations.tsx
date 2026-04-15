@@ -113,7 +113,7 @@ export default function Organizations() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem>View Profile</DropdownMenuItem>
-                      <DropdownMenuItem>Edit Modules</DropdownMenuItem>
+                      {/* <DropdownMenuItem>Edit Modules</DropdownMenuItem> */}
                       <DropdownMenuItem>Change Plan</DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">Deactivate</DropdownMenuItem>
                     </DropdownMenuContent>
