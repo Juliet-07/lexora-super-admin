@@ -6,6 +6,7 @@ import {
   ScrollText,
   Shield,
   Crown,
+  Boxes,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -26,6 +27,7 @@ import {
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Organizations", url: "/organizations", icon: Building2 },
+  { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Subscriptions", url: "/subscriptions", icon: CreditCard },
 ];
 
