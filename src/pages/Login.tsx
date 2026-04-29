@@ -1,33 +1,58 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Shield, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import axios from "axios";
 
 const Login = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const apiURL = import.meta.env.VITE_REACT_APP_BASE_URL;
+  const { handleSubmit } = useForm();
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [errorMessage, setErrorMessage] = useState(null);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  const initialValues = {
+    email: "",
+    password: "",
+  };
+
+  const [loginDetails, setLoginDetails] = useState(initialValues);
+  const { email, password } = loginDetails;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setLoginDetails({ ...loginDetails, [name]: value });
+  };
+
+  const onSubmit = async () => {
     setLoading(true);
-    setTimeout(() => {
-      if (email && password) {
-        localStorage.setItem("lexora_auth", "true");
-        navigate("/");
-        toast({ title: "Welcome back", description: "Logged in as Super Admin" });
-      } else {
-        toast({ title: "Error", description: "Please enter credentials", variant: "destructive" });
-      }
+    setErrorMessage(null);
+    const url = `${apiURL}/auth/login`;
+    try {
+      const response = await axios.post(url, loginDetails);
+      console.log(response, "response");
+      let accessToken = response.data.data.tokens.accessToken;
+      localStorage.setItem("adminToken", accessToken);
+      navigate("/");
+    } catch (error) {
+      console.error("Error in API call:", error);
+      setErrorMessage("Login failed. Please check your credentials.");
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   return (
@@ -38,43 +63,51 @@ const Login = () => {
             <Shield className="h-7 w-7 text-primary" />
           </div>
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Lexora Platform</h1>
-            <p className="text-sm text-muted-foreground mt-1">Super Admin Console</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Lexora Platform
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Super Admin Console
+            </p>
           </div>
         </div>
 
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Sign in</CardTitle>
-            <CardDescription>Enter your credentials to access the admin dashboard</CardDescription>
+            <CardDescription>
+              Enter your credentials to access the admin dashboard
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="admin@lexora.com"
+                  name="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleChange}
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
+              <div className="space-y-4">
+                {/* <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
                   <button type="button" className="text-xs text-primary hover:underline">
                     Forgot password?
                   </button>
-                </div>
+                </div> */}
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
+                    name="password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={handleChange}
                     required
                   />
                   <button
@@ -82,7 +115,11 @@ const Login = () => {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -93,9 +130,9 @@ const Login = () => {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground">
+        {/* <p className="text-center text-xs text-muted-foreground">
           Secure Admin Access
-        </p>
+        </p> */}
       </div>
     </div>
   );

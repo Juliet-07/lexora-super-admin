@@ -27,6 +27,8 @@ const recentAlerts = [
 ];
 
 export default function Dashboard() {
+  const apiURL = import.meta.env.VITE_REACT_APP_BASE_URL;
+  const token = localStorage.getItem("adminToken");
   return (
     <div className="space-y-6">
       <div>

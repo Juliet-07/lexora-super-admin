@@ -7,12 +7,13 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Organizations from "./pages/Organizations";
+import Tenants from "./pages/Tenants";
 import Modules from "./pages/Modules";
 import Subscriptions from "./pages/Subscriptions";
 import AuditLogs from "./pages/AuditLogs";
 import SystemSettings from "./pages/SystemSettings";
 import NotFound from "./pages/NotFound";
+import TenantDetail from "./pages/TenantDetails";
 
 const queryClient = new QueryClient();
 
@@ -31,7 +32,8 @@ const App = () => (
                 <AdminLayout>
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
-                    <Route path="/organizations" element={<Organizations />} />
+                    <Route path="/tenants" element={<Tenants />} />
+                    <Route path="/tenants/:id" element={<TenantDetail />} />
                     <Route path="/modules" element={<Modules />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/audit-logs" element={<AuditLogs />} />
