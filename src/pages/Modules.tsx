@@ -153,7 +153,7 @@ export default function Modules() {
 
   // ── Delete ─────────────────────────────────────────────────
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/super-admin/modules/${id}`),
+    mutationFn: (key: string) => api.delete(`/super-admin/modules/${key}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["modules"] });
       setSelectedId(null);
@@ -525,7 +525,7 @@ export default function Modules() {
                       size="sm"
                       className="text-destructive hover:text-destructive"
                       disabled={deleteMutation.isPending}
-                      onClick={() => deleteMutation.mutate(selected._id)}
+                      onClick={() => deleteMutation.mutate(selected.key)}
                     >
                       {deleteMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />

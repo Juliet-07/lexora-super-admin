@@ -201,6 +201,7 @@ export default function TenantDetail() {
     queryKey: ["tenant", id],
     queryFn: async (): Promise<TenantDetail> => {
       const res = await api.get(`/super-admin/tenants/${id}`);
+      // console.log(res.data.data)
       return res.data?.data ?? res.data;
     },
     enabled: !!id,
