@@ -1,118 +1,339 @@
-import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Activity } from "lucide-react";
+import {
+  Building2,
+  Users,
+  CreditCard,
+  AlertTriangle,
+  Package,
+  Activity,
+} from "lucide-react";
 import { StatCard } from "@/components/StatCard";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
-const revenueData = [
-  { month: "Jan", revenue: 42000 }, { month: "Feb", revenue: 48000 }, { month: "Mar", revenue: 55000 },
-  { month: "Apr", revenue: 51000 }, { month: "May", revenue: 63000 }, { month: "Jun", revenue: 72000 },
-];
+const PLAN_COLORS: Record<string, string> = {
+  free: "hsl(210, 80%, 55%)",
+  starter: "hsl(245, 58%, 58%)",
+  professional: "hsl(260, 55%, 55%)",
+  enterprise: "hsl(225, 60%, 48%)",
+};
 
-const activityData = [
-  { day: "Mon", users: 120 }, { day: "Tue", users: 180 }, { day: "Wed", users: 150 },
-  { day: "Thu", users: 220 }, { day: "Fri", users: 190 }, { day: "Sat", users: 80 }, { day: "Sun", users: 60 },
-];
+type Overview = {
+  totalTenants: number;
+  activeTenants: number;
+  suspendedTenants: number;
+  pendingTenants: number;
+  totalClients: number;
+  activeModules: number;
+};
 
-const moduleData = [
-  { name: "AML/KYC", value: 38, color: "hsl(245, 58%, 58%)" },
-  { name: "GRC", value: 28, color: "hsl(225, 60%, 48%)" },
-  { name: "CRM", value: 20, color: "hsl(260, 55%, 55%)" },
-  { name: "HR", value: 14, color: "hsl(210, 80%, 55%)" },
-];
+type SubscriptionBreakdown = { _id: string; count: number; active: number };
+type RecentTenant = {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  status: string;
+  tenantProfile?: { businessName?: string; industry?: string };
+  createdAt: string;
+};
 
-const recentAlerts = [
-  { company: "Kigali Finance Ltd", type: "AML Alert", severity: "High", time: "2 min ago" },
-  { company: "Rwanda Tech Corp", type: "KYC Expired", severity: "Medium", time: "15 min ago" },
-  { company: "East Africa Holdings", type: "Compliance Due", severity: "Low", time: "1 hr ago" },
-  { company: "Great Lakes Insurance", type: "Suspicious Activity", severity: "High", time: "2 hr ago" },
-];
+type DashboardData = {
+  overview: Overview;
+  subscriptionBreakdown: SubscriptionBreakdown[];
+  recentTenants: RecentTenant[];
+  generatedAt: string;
+};
+
+const statusColor = (s: string) =>
+  s === "active"
+    ? "bg-success/15 text-success"
+    : s === "suspended"
+      ? "bg-warning/15 text-warning"
+      : s === "pending"
+        ? "bg-info/15 text-info"
+        : "bg-muted text-muted-foreground";
 
 export default function Dashboard() {
-  const apiURL = import.meta.env.VITE_REACT_APP_BASE_URL;
-  const token = localStorage.getItem("adminToken");
+  const { data, isLoading, isError } = useQuery<DashboardData>({
+    queryKey: ["superadmin-dashboard"],
+    queryFn: async () => {
+      const res = await api.get("/super-admin/dashboard");
+      return res.data?.data ?? res.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading dashboard…</span>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex items-center justify-center h-64 text-destructive text-sm">
+        Failed to load dashboard. Check your connection and try again.
+      </div>
+    );
+  }
+
+  const { overview, subscriptionBreakdown, recentTenants } = data;
+
+  // Build pie data from subscription breakdown
+  const pieData = subscriptionBreakdown.map((s) => ({
+    name: s._id.charAt(0).toUpperCase() + s._id.slice(1),
+    value: s.count,
+    color: PLAN_COLORS[s._id] ?? "hsl(220, 15%, 55%)",
+  }));
+
+  // Tenant status bar chart
+  const tenantStatusData = [
+    {
+      label: "Active",
+      value: overview.activeTenants,
+      color: "hsl(142, 71%, 45%)",
+    },
+    {
+      label: "Pending",
+      value: overview.pendingTenants,
+      color: "hsl(38, 92%, 50%)",
+    },
+    {
+      label: "Suspended",
+      value: overview.suspendedTenants,
+      color: "hsl(0, 84%, 60%)",
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Global Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">Welcome back, Super Admin</p>
+        <p className="text-muted-foreground text-sm mt-1">
+          Last updated: {new Date(data.generatedAt).toLocaleTimeString()}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Companies" value="147" change="+12 this month" changeType="positive" icon={Building2} gradient />
-        <StatCard title="Active Users" value="2,847" change="+18.2% vs last month" changeType="positive" icon={Users} />
-        <StatCard title="Monthly Revenue" value="$72,400" change="+14.5% growth" changeType="positive" icon={CreditCard} />
-        <StatCard title="Active Alerts" value="23" change="5 critical" changeType="negative" icon={AlertTriangle} />
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="xl:col-span-2">
+          <StatCard
+            title="Total Tenants"
+            value={String(overview.totalTenants)}
+            change={`${overview.activeTenants} active`}
+            changeType="positive"
+            icon={Building2}
+            gradient
+          />
+        </div>
+        <div className="xl:col-span-2">
+          <StatCard
+            title="Total Clients"
+            value={String(overview.totalClients)}
+            change="Across all tenants"
+            changeType="positive"
+            icon={Users}
+          />
+        </div>
+        <div className="xl:col-span-1">
+          <StatCard
+            title="Suspended"
+            value={String(overview.suspendedTenants)}
+            change="Tenants"
+            changeType={overview.suspendedTenants > 0 ? "negative" : "positive"}
+            icon={AlertTriangle}
+          />
+        </div>
+        <div className="xl:col-span-1">
+          <StatCard
+            title="Active Modules"
+            value={String(overview.activeModules)}
+            change="Platform-wide"
+            changeType="positive"
+            icon={Package}
+          />
+        </div>
       </div>
 
+      {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Tenant status bar */}
         <div className="lg:col-span-2 bg-card border rounded-xl p-5 shadow-card">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Revenue Overview</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">
+            Tenant Status Breakdown
+          </h3>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(228, 25%, 18%)" />
-              <XAxis dataKey="month" stroke="hsl(220, 15%, 55%)" fontSize={12} />
-              <YAxis stroke="hsl(220, 15%, 55%)" fontSize={12} />
-              <Tooltip contentStyle={{ background: "hsl(228, 35%, 12%)", border: "1px solid hsl(228, 25%, 18%)", borderRadius: 8, color: "hsl(220, 20%, 92%)" }} />
-              <Bar dataKey="revenue" fill="hsl(245, 58%, 58%)" radius={[6, 6, 0, 0]} />
+            <BarChart data={tenantStatusData} layout="vertical">
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(228, 25%, 18%)"
+              />
+              <XAxis type="number" stroke="hsl(220, 15%, 55%)" fontSize={12} />
+              <YAxis
+                type="category"
+                dataKey="label"
+                stroke="hsl(220, 15%, 55%)"
+                fontSize={12}
+                width={70}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "hsl(228, 35%, 12%)",
+                  border: "1px solid hsl(228, 25%, 18%)",
+                  borderRadius: 8,
+                  color: "hsl(220, 20%, 92%)",
+                }}
+              />
+              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                {tenantStatusData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
+        {/* Subscription breakdown pie */}
         <div className="bg-card border rounded-xl p-5 shadow-card">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Module Usage</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={moduleData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" stroke="none">
-                {moduleData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-              </Pie>
-              <Tooltip contentStyle={{ background: "hsl(228, 35%, 12%)", border: "1px solid hsl(228, 25%, 18%)", borderRadius: 8, color: "hsl(220, 20%, 92%)" }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            {moduleData.map((m) => (
-              <div key={m.name} className="flex items-center gap-2 text-xs">
-                <span className="h-2 w-2 rounded-full" style={{ background: m.color }} />
-                <span className="text-muted-foreground">{m.name} ({m.value}%)</span>
+          <h3 className="text-sm font-semibold text-foreground mb-4">
+            Subscription Plans
+          </h3>
+          {pieData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {pieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: "hsl(228, 35%, 12%)",
+                      border: "1px solid hsl(228, 25%, 18%)",
+                      borderRadius: 8,
+                      color: "hsl(220, 20%, 92%)",
+                    }}
+                    formatter={(v: number, name: string) => [
+                      `${v} tenant${v !== 1 ? "s" : ""}`,
+                      name,
+                    ]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {pieData.map((m) => (
+                  <div key={m.name} className="flex items-center gap-2 text-xs">
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ background: m.color }}
+                    />
+                    <span className="text-muted-foreground capitalize">
+                      {m.name} ({m.value})
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+              No subscription data yet.
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-card border rounded-xl p-5 shadow-card">
-          <h3 className="text-sm font-semibold text-foreground mb-4">User Activity (This Week)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={activityData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(228, 25%, 18%)" />
-              <XAxis dataKey="day" stroke="hsl(220, 15%, 55%)" fontSize={12} />
-              <YAxis stroke="hsl(220, 15%, 55%)" fontSize={12} />
-              <Tooltip contentStyle={{ background: "hsl(228, 35%, 12%)", border: "1px solid hsl(228, 25%, 18%)", borderRadius: 8, color: "hsl(220, 20%, 92%)" }} />
-              <Line type="monotone" dataKey="users" stroke="hsl(260, 55%, 55%)" strokeWidth={2} dot={{ fill: "hsl(260, 55%, 55%)" }} />
-            </LineChart>
-          </ResponsiveContainer>
+      {/* Recent tenants */}
+      <div className="bg-card border rounded-xl shadow-card overflow-hidden">
+        <div className="p-5 border-b">
+          <h3 className="font-semibold text-foreground">
+            Recently Onboarded Tenants
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Latest 5 firms added to the platform
+          </p>
         </div>
-
-        <div className="bg-card border rounded-xl p-5 shadow-card">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Recent Alerts</h3>
-          <div className="space-y-3">
-            {recentAlerts.map((alert, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{alert.company}</p>
-                  <p className="text-xs text-muted-foreground">{alert.type}</p>
-                </div>
-                <div className="text-right">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    alert.severity === "High" ? "bg-destructive/20 text-destructive" :
-                    alert.severity === "Medium" ? "bg-warning/20 text-warning" :
-                    "bg-info/20 text-info"
-                  }`}>{alert.severity}</span>
-                  <p className="text-xs text-muted-foreground mt-1">{alert.time}</p>
-                </div>
-              </div>
-            ))}
+        {recentTenants.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+            No tenants yet.
           </div>
-        </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                {["Firm", "Contact", "Industry", "Status", "Joined"].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {recentTenants.map((t) => (
+                <tr
+                  key={t._id}
+                  className="border-b last:border-0 hover:bg-muted/30 transition-colors"
+                >
+                  <td className="p-4">
+                    <p className="text-sm font-medium text-foreground">
+                      {t.tenantProfile?.businessName ??
+                        `${t.firstName} ${t.lastName}`}
+                    </p>
+                  </td>
+                  <td className="p-4">
+                    <p className="text-sm text-foreground">
+                      {t.firstName} {t.lastName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{t.email}</p>
+                  </td>
+                  <td className="p-4 text-sm text-muted-foreground">
+                    {t.tenantProfile?.industry ?? "—"}
+                  </td>
+                  <td className="p-4">
+                    <span
+                      className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full capitalize ${statusColor(t.status)}`}
+                    >
+                      {t.status}
+                    </span>
+                  </td>
+                  <td className="p-4 text-sm text-muted-foreground">
+                    {new Date(t.createdAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

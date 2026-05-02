@@ -1,5 +1,4 @@
-// Modules.tsx — full API-integrated rewrite
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Boxes,
   Plus,
@@ -35,17 +34,21 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { PlanSelect } from "@/components/Dropdowns/PlanSelect";
 
-// ─── Types matching the API response ────────────────────────
+// ─── Types ────────────────────────────────────────────────────
 type ApiModule = {
   _id: string;
   key: string;
@@ -69,10 +72,11 @@ type CreateModulePayload = {
   addonPriceMonthly: number;
 };
 
-// ─── Icon map ────────────────────────────────────────────────
+type UpdateModulePayload = Omit<CreateModulePayload, "key">;
+
+// ─── Icon helpers ─────────────────────────────────────────────
 const iconMap = { Shield, Database, Globe, Zap, Briefcase, BarChart3, Boxes };
 
-// pick an icon based on the module key/name — purely cosmetic
 function resolveIcon(mod: ApiModule): keyof typeof iconMap {
   const k = mod.key.toLowerCase();
   if (k.includes("kyc") || k.includes("aml") || k.includes("compliance"))
@@ -85,34 +89,40 @@ function resolveIcon(mod: ApiModule): keyof typeof iconMap {
   return "Boxes";
 }
 
-const PLAN_OPTIONS = ["starter", "professional", "enterprise"];
+// ─── Blank form ───────────────────────────────────────────────
+const blankCreate: CreateModulePayload = {
+  key: "",
+  name: "",
+  description: "",
+  includedInPlans: [],
+  isAvailableAsAddon: false,
+  addonPriceMonthly: 0,
+};
 
-const apiURL = import.meta.env.VITE_REACT_APP_BASE_URL;
-const getToken = () => localStorage.getItem("adminToken");
-
-const api = axios.create({ baseURL: apiURL });
-api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-// ─── Component ───────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────
 export default function Modules() {
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
 
-  const [newModule, setNewModule] = useState<CreateModulePayload>({
-    key: "",
+  // Create dialog
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newModule, setNewModule] = useState<CreateModulePayload>(blankCreate);
+
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<UpdateModulePayload>({
     name: "",
     description: "",
     includedInPlans: [],
     isAvailableAsAddon: false,
     addonPriceMonthly: 0,
   });
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<ApiModule | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────────
   const {
@@ -123,11 +133,19 @@ export default function Modules() {
     queryKey: ["modules"],
     queryFn: async () => {
       const res = await api.get("/super-admin/modules");
-      // handle both { data: [...] } and [...] shapes
-      return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      return Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data)
+          ? res.data
+          : [];
     },
     staleTime: 5 * 60 * 1000,
   });
+
+  // Auto-select first item on load
+  useEffect(() => {
+    if (modules.length && !selectedId) setSelectedId(modules[0]._id);
+  }, [modules, selectedId]);
 
   // ── Create ─────────────────────────────────────────────────
   const createMutation = useMutation({
@@ -136,19 +154,30 @@ export default function Modules() {
     onSuccess: (_, payload) => {
       queryClient.invalidateQueries({ queryKey: ["modules"] });
       setCreateOpen(false);
-      setNewModule({
-        key: "",
-        name: "",
-        description: "",
-        includedInPlans: [],
-        isAvailableAsAddon: false,
-        addonPriceMonthly: 0,
-      });
+      setNewModule(blankCreate);
       toast.success(`Module "${payload.name}" created`);
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.message ?? "Failed to create module");
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? "Failed to create module"),
+  });
+
+  // ── Update ─────────────────────────────────────────────────
+  const updateMutation = useMutation({
+    mutationFn: ({
+      key,
+      payload,
+    }: {
+      key: string;
+      payload: UpdateModulePayload;
+    }) => api.patch(`/super-admin/modules/${key}`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["modules"] });
+      setEditOpen(false);
+      setEditingKey(null);
+      toast.success("Module updated successfully");
     },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? "Failed to update module"),
   });
 
   // ── Delete ─────────────────────────────────────────────────
@@ -157,10 +186,37 @@ export default function Modules() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["modules"] });
       setSelectedId(null);
+      setDeleteTarget(null);
       toast.success("Module deleted");
     },
     onError: () => toast.error("Failed to delete module"),
   });
+
+  // ── Helpers ────────────────────────────────────────────────
+  const openEdit = (mod: ApiModule) => {
+    setEditingKey(mod.key);
+    setEditForm({
+      name: mod.name,
+      description: mod.description ?? "",
+      includedInPlans: mod.includedInPlans ?? [],
+      isAvailableAsAddon: mod.isAvailableAsAddon,
+      addonPriceMonthly: mod.addonPriceMonthly,
+    });
+    setEditOpen(true);
+  };
+
+  const handleCreate = () => {
+    if (!newModule.key.trim() || !newModule.name.trim()) {
+      toast.error("Key and name are required");
+      return;
+    }
+    createMutation.mutate(newModule);
+  };
+
+  const handleUpdate = () => {
+    if (!editForm.name.trim() || !editingKey) return;
+    updateMutation.mutate({ key: editingKey, payload: editForm });
+  };
 
   // ── Derived ────────────────────────────────────────────────
   const filtered = modules.filter(
@@ -172,27 +228,8 @@ export default function Modules() {
   const selected = modules.find((m) => m._id === selectedId) ?? modules[0];
   const activeCount = modules.filter((m) => m.isActive).length;
   const addonCount = modules.filter((m) => m.isAvailableAsAddon).length;
+  const SelectedIcon = selected ? iconMap[resolveIcon(selected)] : Boxes;
 
-  // ── Handlers ───────────────────────────────────────────────
-  const handleCreate = () => {
-    if (!newModule.key.trim() || !newModule.name.trim()) {
-      toast.error("Key and name are required");
-      return;
-    }
-    createMutation.mutate(newModule);
-  };
-
-  const togglePlan = (plan: string) => {
-    setNewModule((prev) => ({
-      ...prev,
-      includedInPlans: prev.includedInPlans.includes(plan)
-        ? prev.includedInPlans.filter((p) => p !== plan)
-        : [...prev.includedInPlans, plan],
-    }));
-  };
-
-  // ─────────────────────────────────────────────────────────
-  // RENDER STATES
   // ─────────────────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -211,7 +248,105 @@ export default function Modules() {
     );
   }
 
-  const SelectedIcon = selected ? iconMap[resolveIcon(selected)] : Boxes;
+  // ── Shared form fields (used in both create and edit) ─────
+  const ModuleFormFields = ({
+    form,
+    setForm,
+    showKey,
+  }: {
+    form: CreateModulePayload | UpdateModulePayload;
+    setForm: (f: any) => void;
+    showKey?: boolean;
+  }) => (
+    <div className="space-y-4 py-2">
+      {showKey && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>
+              Module Name <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              placeholder="e.g. AML/KYC Compliance"
+              className="mt-1.5"
+              value={(form as CreateModulePayload).name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>
+              Key <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              placeholder="kyc/aml"
+              className="mt-1.5"
+              value={(form as CreateModulePayload).key}
+              onChange={(e) =>
+                setForm({ ...form, key: e.target.value.toLowerCase() })
+              }
+            />
+          </div>
+        </div>
+      )}
+
+      {!showKey && (
+        <div>
+          <Label>
+            Module Name <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            placeholder="e.g. AML/KYC Compliance"
+            className="mt-1.5"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </div>
+      )}
+
+      <div>
+        <Label>Description</Label>
+        <Textarea
+          placeholder="Short description shown to tenants"
+          className="mt-1.5"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <Label>Included in Plans</Label>
+        <div className="mt-1.5">
+          <PlanSelect
+            multi
+            value={form.includedInPlans}
+            onChange={(keys) => setForm({ ...form, includedInPlans: keys })}
+            hint="Select which subscription plans include this module by default."
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 items-end">
+        <div>
+          <Label>Addon Price / month ($)</Label>
+          <Input
+            type="number"
+            min={0}
+            className="mt-1.5"
+            value={form.addonPriceMonthly}
+            onChange={(e) =>
+              setForm({ ...form, addonPriceMonthly: Number(e.target.value) })
+            }
+          />
+        </div>
+        <div className="flex items-center gap-3 pb-0.5">
+          <Switch
+            checked={form.isAvailableAsAddon}
+            onCheckedChange={(v) => setForm({ ...form, isAvailableAsAddon: v })}
+          />
+          <Label className="cursor-pointer">Available as addon</Label>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -226,109 +361,27 @@ export default function Modules() {
           </p>
         </div>
 
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        {/* ── Create dialog ── */}
+        <Dialog
+          open={createOpen}
+          onOpenChange={(v) => {
+            setCreateOpen(v);
+            if (!v) setNewModule(blankCreate);
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="gradient-primary shadow-glow">
               <Plus className="h-4 w-4 mr-2" /> New Module
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Module</DialogTitle>
               <DialogDescription>
                 Modules are top-level products tenants can enable.
               </DialogDescription>
             </DialogHeader>
-
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Module Name</Label>
-                  <Input
-                    placeholder="e.g. AML/KYC Compliance"
-                    className="mt-1.5"
-                    value={newModule.name}
-                    onChange={(e) =>
-                      setNewModule({ ...newModule, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Key</Label>
-                  <Input
-                    placeholder="kyc/aml"
-                    className="mt-1.5"
-                    value={newModule.key}
-                    onChange={(e) =>
-                      setNewModule({
-                        ...newModule,
-                        key: e.target.value.toLowerCase(),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label>Description</Label>
-                <Textarea
-                  placeholder="Short description shown to tenants"
-                  className="mt-1.5"
-                  value={newModule.description}
-                  onChange={(e) =>
-                    setNewModule({ ...newModule, description: e.target.value })
-                  }
-                />
-              </div>
-
-              <div>
-                <Label>Included in Plans</Label>
-                <div className="flex gap-2 mt-1.5 flex-wrap">
-                  {PLAN_OPTIONS.map((plan) => (
-                    <button
-                      key={plan}
-                      type="button"
-                      onClick={() => togglePlan(plan)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${
-                        newModule.includedInPlans.includes(plan)
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-border text-muted-foreground hover:border-primary"
-                      }`}
-                    >
-                      {plan}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 items-center">
-                <div>
-                  <Label>Addon Price / month ($)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    className="mt-1.5"
-                    value={newModule.addonPriceMonthly}
-                    onChange={(e) =>
-                      setNewModule({
-                        ...newModule,
-                        addonPriceMonthly: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="flex items-center gap-3 pt-6">
-                  <Switch
-                    checked={newModule.isAvailableAsAddon}
-                    onCheckedChange={(v) =>
-                      setNewModule({ ...newModule, isAvailableAsAddon: v })
-                    }
-                  />
-                  <Label className="cursor-pointer">Available as addon</Label>
-                </div>
-              </div>
-            </div>
-
+            <ModuleFormFields form={newModule} setForm={setNewModule} showKey />
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateOpen(false)}>
                 Cancel
@@ -340,7 +393,8 @@ export default function Modules() {
               >
                 {createMutation.isPending ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating…
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating…
                   </>
                 ) : (
                   "Create Module"
@@ -492,7 +546,6 @@ export default function Modules() {
                       <p className="text-sm text-muted-foreground mt-1.5 max-w-xl">
                         {selected.description}
                       </p>
-
                       <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground flex-wrap">
                         {selected.isAvailableAsAddon && (
                           <span>
@@ -502,8 +555,8 @@ export default function Modules() {
                             </span>
                           </span>
                         )}
-                        {selected.includedInPlans.length > 0 && (
-                          <span className="flex items-center gap-1.5">
+                        {selected.includedInPlans?.length > 0 && (
+                          <span className="flex items-center gap-1.5 flex-wrap">
                             Plans:
                             {selected.includedInPlans.map((p) => (
                               <span
@@ -519,27 +572,28 @@ export default function Modules() {
                     </div>
                   </div>
 
+                  {/* Action buttons */}
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => deleteMutation.mutate(selected.key)}
+                      onClick={() => openEdit(selected)}
                     >
-                      {deleteMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Trash2 className="h-4 w-4 mr-1.5" /> Delete
-                        </>
-                      )}
+                      <Pencil className="h-4 w-4 mr-1.5" /> Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(selected)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1.5" /> Delete
                     </Button>
                   </div>
                 </div>
               </div>
 
-              {/* Addon info card */}
+              {/* Details card */}
               <div className="bg-card border rounded-xl p-5 shadow-card">
                 <h3 className="font-semibold text-foreground mb-4">
                   Module Details
@@ -585,12 +639,20 @@ export default function Modules() {
                       {new Date(selected.createdAt).toLocaleDateString()}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Last Updated
+                    </p>
+                    <p className="font-medium text-foreground">
+                      {new Date(selected.updatedAt).toLocaleDateString()}
+                    </p>
+                  </div>
                   <div className="col-span-full">
                     <p className="text-xs text-muted-foreground mb-2">
                       Included in Plans
                     </p>
                     <div className="flex gap-2 flex-wrap">
-                      {selected.includedInPlans.length > 0 ? (
+                      {selected.includedInPlans?.length > 0 ? (
                         selected.includedInPlans.map((p) => (
                           <span
                             key={p}
@@ -612,6 +674,77 @@ export default function Modules() {
           )}
         </div>
       )}
+
+      {/* ── Edit dialog ── */}
+      <Dialog
+        open={editOpen}
+        onOpenChange={(v) => {
+          setEditOpen(v);
+          if (!v) setEditingKey(null);
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Module</DialogTitle>
+            <DialogDescription>
+              Update details for{" "}
+              <span className="font-mono text-foreground">{editingKey}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <ModuleFormFields form={editForm} setForm={setEditForm} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="gradient-primary"
+              onClick={handleUpdate}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete confirm ── */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Module</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.name}</strong>{" "}
+              and remove it from all active subscriptions. This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.key)
+              }
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Delete Module"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
