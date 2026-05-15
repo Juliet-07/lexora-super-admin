@@ -99,6 +99,106 @@ const blankCreate: CreateModulePayload = {
   addonPriceMonthly: 0,
 };
 
+// ── Shared form fields (used in both create and edit) ─────
+const ModuleFormFields = ({
+  form,
+  setForm,
+  showKey,
+}: {
+  form: CreateModulePayload | UpdateModulePayload;
+  setForm: (f: any) => void;
+  showKey?: boolean;
+}) => (
+  <div className="space-y-4 py-2">
+    {showKey && (
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>
+            Module Name <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            placeholder="e.g. AML/KYC Compliance"
+            className="mt-1.5"
+            value={(form as CreateModulePayload).name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>
+            Key <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            placeholder="kyc/aml"
+            className="mt-1.5"
+            value={(form as CreateModulePayload).key}
+            onChange={(e) =>
+              setForm({ ...form, key: e.target.value.toLowerCase() })
+            }
+          />
+        </div>
+      </div>
+    )}
+
+    {!showKey && (
+      <div>
+        <Label>
+          Module Name <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          placeholder="e.g. AML/KYC Compliance"
+          className="mt-1.5"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+      </div>
+    )}
+
+    <div>
+      <Label>Description</Label>
+      <Textarea
+        placeholder="Short description shown to tenants"
+        className="mt-1.5"
+        value={form.description}
+        onChange={(e) => setForm({ ...form, description: e.target.value })}
+      />
+    </div>
+
+    <div>
+      <Label>Included in Plans</Label>
+      <div className="mt-1.5">
+        <PlanSelect
+          multi
+          value={form.includedInPlans}
+          onChange={(keys) => setForm({ ...form, includedInPlans: keys })}
+          hint="Select which subscription plans include this module by default."
+        />
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-4 items-end">
+      <div>
+        <Label>Addon Price / month ($)</Label>
+        <Input
+          type="number"
+          min={0}
+          className="mt-1.5"
+          value={form.addonPriceMonthly}
+          onChange={(e) =>
+            setForm({ ...form, addonPriceMonthly: Number(e.target.value) })
+          }
+        />
+      </div>
+      <div className="flex items-center gap-3 pb-0.5">
+        <Switch
+          checked={form.isAvailableAsAddon}
+          onCheckedChange={(v) => setForm({ ...form, isAvailableAsAddon: v })}
+        />
+        <Label className="cursor-pointer">Available as addon</Label>
+      </div>
+    </div>
+  </div>
+);
+
 // ─── Component ────────────────────────────────────────────────
 export default function Modules() {
   const queryClient = useQueryClient();
@@ -247,106 +347,6 @@ export default function Modules() {
       </div>
     );
   }
-
-  // ── Shared form fields (used in both create and edit) ─────
-  const ModuleFormFields = ({
-    form,
-    setForm,
-    showKey,
-  }: {
-    form: CreateModulePayload | UpdateModulePayload;
-    setForm: (f: any) => void;
-    showKey?: boolean;
-  }) => (
-    <div className="space-y-4 py-2">
-      {showKey && (
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>
-              Module Name <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              placeholder="e.g. AML/KYC Compliance"
-              className="mt-1.5"
-              value={(form as CreateModulePayload).name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>
-              Key <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              placeholder="kyc/aml"
-              className="mt-1.5"
-              value={(form as CreateModulePayload).key}
-              onChange={(e) =>
-                setForm({ ...form, key: e.target.value.toLowerCase() })
-              }
-            />
-          </div>
-        </div>
-      )}
-
-      {!showKey && (
-        <div>
-          <Label>
-            Module Name <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            placeholder="e.g. AML/KYC Compliance"
-            className="mt-1.5"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-        </div>
-      )}
-
-      <div>
-        <Label>Description</Label>
-        <Textarea
-          placeholder="Short description shown to tenants"
-          className="mt-1.5"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
-      </div>
-
-      <div>
-        <Label>Included in Plans</Label>
-        <div className="mt-1.5">
-          <PlanSelect
-            multi
-            value={form.includedInPlans}
-            onChange={(keys) => setForm({ ...form, includedInPlans: keys })}
-            hint="Select which subscription plans include this module by default."
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 items-end">
-        <div>
-          <Label>Addon Price / month ($)</Label>
-          <Input
-            type="number"
-            min={0}
-            className="mt-1.5"
-            value={form.addonPriceMonthly}
-            onChange={(e) =>
-              setForm({ ...form, addonPriceMonthly: Number(e.target.value) })
-            }
-          />
-        </div>
-        <div className="flex items-center gap-3 pb-0.5">
-          <Switch
-            checked={form.isAvailableAsAddon}
-            onCheckedChange={(v) => setForm({ ...form, isAvailableAsAddon: v })}
-          />
-          <Label className="cursor-pointer">Available as addon</Label>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-6">
