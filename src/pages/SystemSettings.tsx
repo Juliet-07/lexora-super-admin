@@ -75,13 +75,115 @@ export default function SystemSettings() {
         <p className="text-muted-foreground text-sm mt-1">Global configuration & integrations</p>
       </div>
 
-      <Tabs defaultValue="modules">
+      <Tabs defaultValue="profile">
         <TabsList className="bg-muted">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
-          {/* <TabsTrigger value="integrations">Integrations</TabsTrigger> */}
           <TabsTrigger value="frameworks">Compliance Frameworks</TabsTrigger>
           <TabsTrigger value="risk">Risk Rules</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="profile" className="mt-4 space-y-6">
+          <div className="bg-card border rounded-xl p-6 shadow-card">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <Avatar className="h-20 w-20">
+                    <AvatarImage src={profile.avatar} />
+                    <AvatarFallback className="gradient-primary text-primary-foreground text-xl font-semibold">
+                      {profile.firstName[0]}{profile.lastName[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  {editing && (
+                    <button className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-glow">
+                      <Camera className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">{profile.firstName} {profile.lastName}</h3>
+                  <p className="text-sm text-muted-foreground">{profile.role}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{profile.email}</p>
+                </div>
+              </div>
+              {!editing ? (
+                <Button variant="outline" onClick={() => { setDraft(profile); setEditing(true); }}>
+                  <User className="h-4 w-4" /> Edit Profile
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+                  <Button className="gradient-primary shadow-glow" onClick={saveProfile}>Save Changes</Button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>First Name</Label>
+                <Input className="mt-1.5" disabled={!editing}
+                  value={editing ? draft.firstName : profile.firstName}
+                  onChange={(e) => setDraft({ ...draft, firstName: e.target.value })} />
+              </div>
+              <div>
+                <Label>Last Name</Label>
+                <Input className="mt-1.5" disabled={!editing}
+                  value={editing ? draft.lastName : profile.lastName}
+                  onChange={(e) => setDraft({ ...draft, lastName: e.target.value })} />
+              </div>
+              <div>
+                <Label>Email</Label>
+                <Input className="mt-1.5" type="email" disabled={!editing}
+                  value={editing ? draft.email : profile.email}
+                  onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input className="mt-1.5" disabled={!editing}
+                  value={editing ? draft.phone : profile.phone}
+                  onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
+              </div>
+              <div className="md:col-span-2">
+                <Label>Role</Label>
+                <Input className="mt-1.5" disabled value={profile.role} />
+              </div>
+              <div className="md:col-span-2">
+                <Label>Bio</Label>
+                <Textarea className="mt-1.5" rows={3} disabled={!editing}
+                  value={editing ? draft.bio : profile.bio}
+                  onChange={(e) => setDraft({ ...draft, bio: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border rounded-xl p-6 shadow-card space-y-4">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 text-primary" />
+              <h3 className="font-semibold text-foreground">Change Password</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label>Current Password</Label>
+                <Input className="mt-1.5" type="password"
+                  value={passwords.current}
+                  onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} />
+              </div>
+              <div>
+                <Label>New Password</Label>
+                <Input className="mt-1.5" type="password"
+                  value={passwords.next}
+                  onChange={(e) => setPasswords({ ...passwords, next: e.target.value })} />
+              </div>
+              <div>
+                <Label>Confirm Password</Label>
+                <Input className="mt-1.5" type="password"
+                  value={passwords.confirm}
+                  onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} />
+              </div>
+            </div>
+            <Button className="gradient-primary shadow-glow" onClick={changePassword}>Update Password</Button>
+          </div>
+        </TabsContent>
 
         <TabsContent value="modules" className="mt-4 space-y-4">
           {modules.map((mod) => (
