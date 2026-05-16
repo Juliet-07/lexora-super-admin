@@ -178,9 +178,10 @@ export function ModuleSelect(props: ModuleSelectProps) {
 
   // ── Single ───────────────────────────────────────────────
   const selected = options.find((o) => o.value === props.value) ?? null;
+  const onChangeSingle = props.onChange as (key: string | null) => void;
 
   const handleChange = (chosen: SingleValue<ModuleOption>) => {
-    props.onChange(chosen?.value ?? null);
+    onChangeSingle(chosen?.value ?? null);
   };
 
   return (
