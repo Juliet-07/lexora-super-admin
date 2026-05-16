@@ -152,13 +152,14 @@ export function PlanSelect(props: PlanSelectProps) {
   }
 
   const selected = options.find((o) => o.value === props.value) ?? null;
+  const onChangeSingle = props.onChange as (key: string | null) => void;
   return (
     <div>
       <ReactSelect<PlanOption, false>
         options={options}
         value={selected}
         onChange={(chosen: SingleValue<PlanOption>) =>
-          props.onChange(chosen?.value ?? null)
+          onChangeSingle(chosen?.value ?? null)
         }
         isLoading={isLoading}
         isDisabled={isDisabled}
