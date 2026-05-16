@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Shield, Globe, Zap, Database } from "lucide-react";
+import { Shield, Globe, Zap, Database, User, Mail, Phone, Camera, Lock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useToast } from "@/hooks/use-toast";
 
 const modules = [
   { name: "AML/KYC", description: "Anti-Money Laundering & Know Your Customer compliance", enabled: true, icon: Shield },
