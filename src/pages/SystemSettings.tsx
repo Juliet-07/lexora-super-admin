@@ -31,9 +31,42 @@ const frameworks = [
 ];
 
 export default function SystemSettings() {
+  const { toast } = useToast();
   const [moduleStates, setModuleStates] = useState(
     Object.fromEntries(modules.map((m) => [m.name, m.enabled]))
   );
+
+  const [profile, setProfile] = useState({
+    firstName: "Super",
+    lastName: "Admin",
+    email: "admin@lexora.io",
+    phone: "+250 788 123 456",
+    role: "Platform Super Admin",
+    bio: "Managing the Lexora platform and overseeing all tenant operations.",
+    avatar: "",
+  });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(profile);
+  const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
+
+  const saveProfile = () => {
+    setProfile(draft);
+    setEditing(false);
+    toast({ title: "Profile updated", description: "Your profile details have been saved." });
+  };
+
+  const changePassword = () => {
+    if (!passwords.current || !passwords.next) {
+      toast({ title: "Missing fields", description: "Fill in all password fields.", variant: "destructive" });
+      return;
+    }
+    if (passwords.next !== passwords.confirm) {
+      toast({ title: "Passwords don't match", description: "New password and confirmation must match.", variant: "destructive" });
+      return;
+    }
+    setPasswords({ current: "", next: "", confirm: "" });
+    toast({ title: "Password changed", description: "Your password has been updated." });
+  };
 
   return (
     <div className="space-y-6">
