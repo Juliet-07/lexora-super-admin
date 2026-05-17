@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Trash2,
   RefreshCw,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +103,7 @@ type Tenant = {
   phone?: string;
   status: string;
   createdAt: string;
+  clientCount: number;
   tenantProfile?: { businessName: string; industry: string; website?: string };
   subscription?: { plan: string; status: string; activeModules: string[] };
 };
@@ -190,13 +192,14 @@ export default function Tenants() {
     setPage(1);
   }, [search]);
 
-  // ── Fetch ─────────────────────────────────────────────────
+  // ── Fetch Tenants ─────────────────────────────────────────────────
   const { data, isLoading, isError } = useQuery<PaginatedResponse>({
     queryKey: ["tenants", page, search],
     queryFn: async (): Promise<PaginatedResponse> => {
       const res = await api.get("/super-admin/tenants", {
         params: { page, limit: 10, search: search || undefined },
       });
+      console.log(res.data.data);
       return res.data?.data ?? res.data;
     },
     staleTime: 2 * 60 * 1000,
@@ -207,7 +210,7 @@ export default function Tenants() {
   const totalPages = data?.totalPages ?? 1;
   const total = data?.total ?? 0;
 
-  // ── Create ────────────────────────────────────────────────
+  // ── Create Tenant────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload: CreateTenantPayload) =>
       api.post("/super-admin/tenants", payload),
@@ -222,13 +225,13 @@ export default function Tenants() {
       toast.error(err?.response?.data?.message ?? "Failed to create tenant"),
   });
 
-  // ── Delete ────────────────────────────────────────────────
+  // ── Delete Tenant ────────────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/super-admin/tenants/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setDeleteTarget(null);
-      toast.success("Tenant deactivated successfully.");
+      toast.success("Tenant deleted successfully.");
     },
     onError: () => toast.error("Failed to delete tenant"),
   });
@@ -246,6 +249,21 @@ export default function Tenants() {
     },
     onError: (err: any) =>
       toast.error(err?.response?.data?.message ?? "Failed to update plan"),
+  });
+
+  // ── Change Status ─────────────────────────────────────────
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.patch(`/super-admin/tenants/${id}/status`, {
+        status,
+        reason:
+          status === "active" ? "Account reactivated" : "Account deactivated",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
+      toast.success("Tenant status updated.");
+    },
+    onError: () => toast.error("Failed to update tenant status"),
   });
 
   // ── Helpers ───────────────────────────────────────────────
@@ -659,6 +677,7 @@ export default function Tenants() {
                   "Plan",
                   "Status",
                   "Industry",
+                  "Clients",
                   "Modules",
                   "Actions",
                 ].map((h) => (
@@ -731,6 +750,9 @@ export default function Tenants() {
                       </span>
                     </td>
                     <td className="p-4 text-sm text-foreground">{industry}</td>
+                    <td className="p-4 text-sm text-foreground text-center">
+                      {tenant.clientCount}
+                    </td>
                     <td className="p-4">
                       {modules.length > 0 ? (
                         <div className="flex gap-1 flex-wrap">
@@ -765,12 +787,33 @@ export default function Tenants() {
                           <DropdownMenuItem
                             onClick={() => navigate(`/tenants/${tenant._id}`)}
                           >
-                            View Profile
+                            <User className="h-4 w-4 mr-2" /> View Profile
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openChangePlan(tenant)}
                           >
                             <RefreshCw className="h-4 w-4 mr-2" /> Change Plan
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              statusMutation.mutate({
+                                id: tenant._id,
+                                status:
+                                  tenant.status === "active"
+                                    ? "inactive"
+                                    : "active",
+                              })
+                            }
+                          >
+                            {tenant.status === "active" ? (
+                              <>
+                                <X className="h-4 w-4 mr-2" /> Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <Check className="h-4 w-4 mr-2" /> Activate
+                              </>
+                            )}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -959,12 +1002,12 @@ export default function Tenants() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Tenant</AlertDialogTitle>
             <AlertDialogDescription>
-              This will deactivate{" "}
+              This will permanantly delete{" "}
               <strong>
                 {deleteTarget?.tenantProfile?.businessName ??
                   deleteTarget?.firstName}
               </strong>{" "}
-              and all their clients. This action cannot be undone.
+              and all their records. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -53,6 +53,7 @@ import {
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { PlanSelect } from "@/components/Dropdowns/PlanSelect";
 
 // ─── Types ────────────────────────────────────────────────────
 type TenantDetail = {
@@ -119,7 +120,6 @@ type ChangePlanPayload = {
   maxClientsOverride: number;
 };
 
-const PLAN_OPTIONS = ["free", "starter", "professional", "enterprise"];
 const INDUSTRY_OPTIONS = [
   "Financial Services",
   "Legal",
@@ -263,6 +263,22 @@ export default function TenantDetail() {
       toast.error(err?.response?.data?.message ?? "Failed to update plan"),
   });
 
+  // ── Change Status ─────────────────────────────────────────
+  const statusMutation = useMutation({
+    mutationFn: ({ status }: { status: string }) =>
+      api.patch(`/super-admin/tenants/${id}/status`, {
+        status,
+        reason:
+          status === "active" ? "Account reactivated" : "Account deactivated",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant", id] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
+      toast.success("Tenant status updated.");
+    },
+    onError: () => toast.error("Failed to update tenant status"),
+  });
+
   const addAddon = () => {
     const v = addonInput.trim().toLowerCase();
     if (!v || planForm.addonModules.includes(v)) return;
@@ -355,6 +371,28 @@ export default function TenantDetail() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setPlanOpen(true)}>
             <RefreshCw className="h-4 w-4 mr-1.5" /> Change Plan
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              statusMutation.mutate({
+                status: tenant.status === "active" ? "inactive" : "active",
+              })
+            }
+            disabled={statusMutation.isPending}
+          >
+            {statusMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : tenant.status === "active" ? (
+              <>
+                <X className="h-4 w-4 mr-1.5" /> Deactivate
+              </>
+            ) : (
+              <>
+                <Check className="h-4 w-4 mr-1.5" /> Activate
+              </>
+            )}
           </Button>
           <Button
             variant="outline"
@@ -748,22 +786,13 @@ export default function TenantDetail() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Plan</Label>
-              <Select
-                value={planForm.plan}
-                onValueChange={(v) => setPlanForm((p) => ({ ...p, plan: v }))}
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLAN_OPTIONS.map((p) => (
-                    <SelectItem key={p} value={p} className="capitalize">
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Plans</Label>
+              <div className="mt-1.5">
+                <PlanSelect
+                  value={planForm.plan}
+                  onChange={(v) => setPlanForm((p) => ({ ...p, plan: v }))}
+                />
+              </div>
             </div>
             <div>
               <Label>Period End Date</Label>

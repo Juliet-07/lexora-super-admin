@@ -23,6 +23,8 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -36,13 +38,30 @@ const systemItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
+type profileData = {
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
 export function AdminSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const isActive = (path: string) =>
-    path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+    path === "/"
+      ? location.pathname === "/"
+      : location.pathname.startsWith(path);
 
+  const { data, isLoading, isError } = useQuery<profileData>({
+    queryKey: ["superadmin-profile"],
+    queryFn: async () => {
+      const res = await api.get("/auth/me");
+      // console.log(res.data.data);
+      return res.data?.data ?? res.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
@@ -52,7 +71,9 @@ export function AdminSidebar() {
           </div>
           {!collapsed && (
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-foreground">Lexora</h1>
+              <h1 className="text-lg font-bold tracking-tight text-foreground">
+                Lexora
+              </h1>
               <p className="text-xs text-muted-foreground">Platform Admin</p>
             </div>
           )}
@@ -101,11 +122,16 @@ export function AdminSidebar() {
         {!collapsed && (
           <div className="flex items-center gap-3 rounded-lg bg-muted p-3">
             <div className="gradient-accent h-8 w-8 rounded-full flex items-center justify-center">
-              <Shield className="h-4 w-4 text-primary-foreground" />
+              <span className="text-xs font-semibold text-primary-foreground">
+                {data?.firstName?.[0]?.toUpperCase()}
+                {data?.lastName?.[0]?.toUpperCase()}
+              </span>
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">Super Admin</p>
-              <p className="text-xs text-muted-foreground">admin@lexora.io</p>
+              <p className="text-sm font-medium text-foreground">
+                {data?.firstName + " " + data?.lastName}
+              </p>
+              <p className="text-xs text-muted-foreground">{data?.email}</p>
             </div>
           </div>
         )}
