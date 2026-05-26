@@ -43,6 +43,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -99,15 +106,19 @@ const blankCreate: CreateModulePayload = {
   addonPriceMonthly: 0,
 };
 
+const KEYS = ["crm", "grc", "hr_pm", "kyc_aml"];
+
 // ── Shared form fields (used in both create and edit) ─────
 const ModuleFormFields = ({
   form,
   setForm,
   showKey,
+  editingKey,
 }: {
   form: CreateModulePayload | UpdateModulePayload;
   setForm: (f: any) => void;
   showKey?: boolean;
+  editingKey?: string | null;
 }) => (
   <div className="space-y-4 py-2">
     {showKey && (
@@ -125,16 +136,23 @@ const ModuleFormFields = ({
         </div>
         <div>
           <Label>
-            Key <span className="text-destructive">*</span>
+            Plan Key <span className="text-destructive">*</span>
           </Label>
-          <Input
-            placeholder="kyc/aml"
-            className="mt-1.5"
+          <Select
             value={(form as CreateModulePayload).key}
-            onChange={(e) =>
-              setForm({ ...form, key: e.target.value.toLowerCase() })
-            }
-          />
+            onValueChange={(v) => setForm({ ...form, key: v })}
+          >
+            <SelectTrigger className="mt-1.5" disabled={!!editingKey}>
+              <SelectValue placeholder="Select key" />
+            </SelectTrigger>
+            <SelectContent>
+              {KEYS.map((p) => (
+                <SelectItem key={p} value={p} className="capitalize">
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
     )}
@@ -175,7 +193,7 @@ const ModuleFormFields = ({
       </div>
     </div>
 
-    <div className="grid grid-cols-2 gap-4 items-end">
+    <div className="grid grid-cols-2 gap-4 items-end hidden">
       <div>
         <Label>Addon Price / month ($)</Label>
         <Input
@@ -406,7 +424,7 @@ export default function Modules() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-card border rounded-xl p-5 shadow-card">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Total Modules</p>
@@ -425,7 +443,7 @@ export default function Modules() {
             {activeCount}
           </p>
         </div>
-        <div className="bg-card border rounded-xl p-5 shadow-card">
+        {/* <div className="bg-card border rounded-xl p-5 shadow-card">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Available as Addon</p>
             <Settings2 className="h-4 w-4 text-info" />
@@ -433,7 +451,7 @@ export default function Modules() {
           <p className="text-3xl font-bold text-foreground mt-2">
             {addonCount}
           </p>
-        </div>
+        </div> */}
       </div>
 
       {/* Two-pane layout */}

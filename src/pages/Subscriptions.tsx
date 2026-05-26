@@ -743,40 +743,6 @@ export default function Subscriptions() {
 
             {/* <div>
               <Label>Included Modules</Label>
-              <div className="flex gap-2 mt-1.5">
-                <Input
-                  placeholder="e.g. kyc/aml"
-                  value={form.moduleInput}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, moduleInput: e.target.value }))
-                  }
-                  onKeyDown={(e) => e.key === "Enter" && addModule()}
-                />
-                <Button variant="outline" onClick={addModule}>
-                  Add
-                </Button>
-              </div>
-              {form.includedModules.length > 0 && (
-                <div className="flex gap-1.5 flex-wrap mt-2">
-                  {form.includedModules.map((m) => (
-                    <span
-                      key={m}
-                      className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full"
-                    >
-                      {m}
-                      <button
-                        onClick={() => removeModule(m)}
-                        className="hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div> */}
-            <div>
-              <Label>Included Modules</Label>
               <div className="mt-1.5">
                 <ModuleSelect
                   multi
@@ -787,7 +753,7 @@ export default function Subscriptions() {
                   hint="Only active modules are shown. Create modules first if the list is empty."
                 />
               </div>
-            </div>
+            </div> */}
           </div>
 
           <DialogFooter>
