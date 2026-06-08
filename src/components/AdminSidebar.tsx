@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   Building2,
   CreditCard,
+  Receipt,
   Settings,
   ScrollText,
   Shield,
@@ -29,6 +30,7 @@ import { api } from "@/lib/api";
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Subscriptions", url: "/subscriptions", icon: CreditCard },
+  { title: "Transactions", url: "/transactions", icon: Receipt },
   { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Tenants", url: "/tenants", icon: Building2 },
 ];
