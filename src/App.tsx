@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Tenants from "./pages/Tenants";
 import Modules from "./pages/Modules";
 import Subscriptions from "./pages/Subscriptions";
+import Transactions from "./pages/Transactions";
 import AuditLogs from "./pages/AuditLogs";
 import SystemSettings from "./pages/SystemSettings";
 import NotFound from "./pages/NotFound";
@@ -36,6 +37,7 @@ const App = () => (
                     <Route path="/tenants/:id" element={<TenantDetail />} />
                     <Route path="/modules" element={<Modules />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
+                    <Route path="/transactions" element={<Transactions />} />
                     <Route path="/audit-logs" element={<AuditLogs />} />
                     <Route path="/settings" element={<SystemSettings />} />
                     <Route path="*" element={<NotFound />} />
