@@ -28,9 +28,9 @@ import { api } from "@/lib/api";
 
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Tenants", url: "/tenants", icon: Building2 },
-  { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Subscriptions", url: "/subscriptions", icon: CreditCard },
+  { title: "Modules", url: "/modules", icon: Boxes },
+  { title: "Tenants", url: "/tenants", icon: Building2 },
 ];
 
 const systemItems = [
