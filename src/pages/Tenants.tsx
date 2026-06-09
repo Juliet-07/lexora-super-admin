@@ -13,6 +13,8 @@ import {
   Trash2,
   RefreshCw,
   User,
+  Receipt,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,7 +73,6 @@ type ContactPerson = {
   phone: string;
   position: string;
 };
-
 type CreateTenantPayload = {
   email: string;
   firstName: string;
@@ -86,7 +88,6 @@ type CreateTenantPayload = {
   contactPerson: ContactPerson;
   plan: string;
 };
-
 type ChangePlanPayload = {
   plan: string;
   addonModules: string[];
@@ -94,7 +95,15 @@ type ChangePlanPayload = {
   maxUsersOverride: number;
   maxClientsOverride: number;
 };
-
+type RecordPaymentPayload = {
+  tenantId: string;
+  plan: string;
+  amount: number;
+  currency: "USD" | "RWF";
+  documentType: "invoice" | "receipt";
+  paymentReference: string;
+  notes: string;
+};
 type Tenant = {
   _id: string;
   firstName: string;
@@ -107,7 +116,6 @@ type Tenant = {
   tenantProfile?: { businessName: string; industry: string; website?: string };
   subscription?: { plan: string; status: string; activeModules: string[] };
 };
-
 type PaginatedResponse = {
   items: Tenant[];
   total: number;
@@ -178,54 +186,120 @@ export default function Tenants() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<CreateTenantPayload>(defaultPayload);
 
-  // Change plan dialog state
+  // ── Payment recording dialog (opens after create on paid plan) ──
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [createdTenantId, setCreatedTenantId] = useState<string | null>(null);
+  const [createdTenantName, setCreatedTenantName] = useState("");
+  const [createdTenantPlan, setCreatedTenantPlan] = useState("");
+  const [paymentForm, setPaymentForm] = useState<
+    Omit<RecordPaymentPayload, "tenantId" | "plan">
+  >({
+    amount: 0,
+    currency: "RWF",
+    documentType: "receipt",
+    paymentReference: "",
+    notes: "",
+  });
+
+  // ── Change plan dialog ──
   const [planOpen, setPlanOpen] = useState(false);
   const [planTarget, setPlanTarget] = useState<Tenant | null>(null);
   const [planForm, setPlanForm] =
     useState<ChangePlanPayload>(defaultPlanPayload);
   const [addonInput, setAddonInput] = useState("");
 
-  // Delete dialog state
+  // ── Delete dialog ──
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
 
   useEffect(() => {
     setPage(1);
   }, [search]);
 
-  // ── Fetch Tenants ─────────────────────────────────────────────────
+  // ── Fetch Tenants ─────────────────────────────────────────
   const { data, isLoading, isError } = useQuery<PaginatedResponse>({
     queryKey: ["tenants", page, search],
     queryFn: async (): Promise<PaginatedResponse> => {
       const res = await api.get("/super-admin/tenants", {
         params: { page, limit: 10, search: search || undefined },
       });
-      console.log(res.data.data);
       return res.data?.data ?? res.data;
     },
     staleTime: 2 * 60 * 1000,
-    // keepPreviousData: true,
   });
 
   const tenants: Tenant[] = data?.items ?? [];
   const totalPages = data?.totalPages ?? 1;
   const total = data?.total ?? 0;
 
-  // ── Create Tenant────────────────────────────────────────────────
+  // ── Create Tenant ─────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (payload: CreateTenantPayload) =>
       api.post("/super-admin/tenants", payload),
-    onSuccess: () => {
+    onSuccess: (res, payload) => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setCreateOpen(false);
       setStep(0);
-      setForm(defaultPayload);
-      toast.success("Tenant created. Login credentials sent by email.");
+
+      const tenantId = res.data?.data?._id ?? res.data?._id;
+      const planChosen = payload.plan;
+      const name =
+        payload.businessName || `${payload.firstName} ${payload.lastName}`;
+
+      if (planChosen !== "free") {
+        // Paid plan — open payment recording dialog
+        setCreatedTenantId(tenantId);
+        setCreatedTenantName(name);
+        setCreatedTenantPlan(planChosen);
+        setPaymentForm({
+          amount: 0,
+          currency: "RWF",
+          documentType: "receipt",
+          paymentReference: "",
+          notes: "",
+        });
+        setPaymentOpen(true);
+      } else {
+        // Free plan — credentials already sent
+        setForm(defaultPayload);
+        toast.success("Tenant created. Login credentials sent by email.");
+      }
     },
     onError: (err: any) =>
       toast.error(err?.response?.data?.message ?? "Failed to create tenant"),
   });
 
-  // ── Delete Tenant ────────────────────────────────────────────────
+  // ── Record payment ────────────────────────────────────────
+  const paymentMutation = useMutation({
+    mutationFn: (payload: RecordPaymentPayload) =>
+      api.post("/super-admin/payments/manual", payload),
+    onSuccess: (_, payload) => {
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
+      setPaymentOpen(false);
+      setForm(defaultPayload);
+      setCreatedTenantId(null);
+
+      if (payload.documentType === "receipt") {
+        toast.success(
+          "Payment recorded. Receipt and login credentials sent to tenant.",
+        );
+      } else {
+        toast.success(
+          "Invoice sent. Tenant will receive login credentials once payment is confirmed.",
+        );
+      }
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? "Failed to record payment"),
+  });
+
+  const skipPaymentRecording = () => {
+    setPaymentOpen(false);
+    setForm(defaultPayload);
+    setCreatedTenantId(null);
+    toast.info("Tenant created. Record payment later from the tenant profile.");
+  };
+
+  // ── Delete Tenant ─────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/super-admin/tenants/${id}`),
     onSuccess: () => {
@@ -415,6 +489,12 @@ export default function Tenants() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {form.plan !== "free" && (
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      You'll be asked to record payment details after creating
+                      this tenant.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -502,16 +582,16 @@ export default function Tenants() {
                     <Label>City</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="Lagos"
+                      placeholder="Kigali"
                       value={form.address.city}
                       onChange={(e) => setAddress("city", e.target.value)}
                     />
                   </div>
                   <div>
-                    <Label>State</Label>
+                    <Label>State / Province</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="Lagos State"
+                      placeholder="Kigali City"
                       value={form.address.state}
                       onChange={(e) => setAddress("state", e.target.value)}
                     />
@@ -522,7 +602,7 @@ export default function Tenants() {
                     <Label>Country</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="Nigeria"
+                      placeholder="Rwanda"
                       value={form.address.country}
                       onChange={(e) => setAddress("country", e.target.value)}
                     />
@@ -531,7 +611,7 @@ export default function Tenants() {
                     <Label>Postal Code</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="100001"
+                      placeholder="0000"
                       value={form.address.postalCode}
                       onChange={(e) => setAddress("postalCode", e.target.value)}
                     />
@@ -577,7 +657,7 @@ export default function Tenants() {
                     <Label>Phone</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="+1234567890"
+                      placeholder="+250700000000"
                       value={form.contactPerson.phone}
                       onChange={(e) => setContact("phone", e.target.value)}
                     />
@@ -626,7 +706,7 @@ export default function Tenants() {
                 >
                   {createMutation.isPending ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
                       Creating…
                     </>
                   ) : (
@@ -659,7 +739,7 @@ export default function Tenants() {
           </div>
         ) : isError ? (
           <div className="flex items-center justify-center h-48 text-destructive text-sm">
-            Failed to load tenants. Check your connection and try again.
+            Failed to load tenants.
           </div>
         ) : tenants.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2 text-muted-foreground">
@@ -736,9 +816,11 @@ export default function Tenants() {
                             ? "bg-success/15 text-success"
                             : tenant.status === "suspended"
                               ? "bg-warning/15 text-warning"
-                              : tenant.status === "pending"
-                                ? "bg-info/15 text-info"
-                                : "bg-muted text-muted-foreground"
+                              : tenant.status === "awaiting_payment"
+                                ? "bg-blue-100 text-blue-700"
+                                : tenant.status === "pending"
+                                  ? "bg-info/15 text-info"
+                                  : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {tenant.status === "active" ? (
@@ -746,7 +828,9 @@ export default function Tenants() {
                         ) : (
                           <X className="h-3 w-3" />
                         )}
-                        <span className="capitalize">{tenant.status}</span>
+                        <span className="capitalize">
+                          {tenant.status.replace(/_/g, " ")}
+                        </span>
                       </span>
                     </td>
                     <td className="p-4 text-sm text-foreground">{industry}</td>
@@ -860,6 +944,203 @@ export default function Tenants() {
         </div>
       )}
 
+      {/* ── Payment Recording Dialog ─────────────────────────── */}
+      {/* Opens automatically after tenant is created on a paid plan */}
+      <Dialog open={paymentOpen} onOpenChange={() => {}}>
+        <DialogContent
+          className="max-w-md"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+            <DialogDescription>
+              <strong>{createdTenantName}</strong> has been created on the{" "}
+              <strong className="capitalize">{createdTenantPlan}</strong> plan.
+              Record how payment was handled — this determines what email the
+              tenant receives.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Document type — receipt or invoice */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() =>
+                  setPaymentForm((p) => ({ ...p, documentType: "receipt" }))
+                }
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                  paymentForm.documentType === "receipt"
+                    ? "border-primary bg-primary/5"
+                    : "border-muted hover:border-primary/40"
+                }`}
+              >
+                <Receipt
+                  className={`h-6 w-6 ${paymentForm.documentType === "receipt" ? "text-primary" : "text-muted-foreground"}`}
+                />
+                <div className="text-center">
+                  <p className="text-sm font-semibold">Receipt</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Payment already received
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={() =>
+                  setPaymentForm((p) => ({ ...p, documentType: "invoice" }))
+                }
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                  paymentForm.documentType === "invoice"
+                    ? "border-primary bg-primary/5"
+                    : "border-muted hover:border-primary/40"
+                }`}
+              >
+                <FileText
+                  className={`h-6 w-6 ${paymentForm.documentType === "invoice" ? "text-primary" : "text-muted-foreground"}`}
+                />
+                <div className="text-center">
+                  <p className="text-sm font-semibold">Invoice</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Payment not yet received
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* What happens notice */}
+            <div
+              className={`p-3 rounded-lg text-xs ${
+                paymentForm.documentType === "receipt"
+                  ? "bg-green-50 border border-green-200 text-green-700"
+                  : "bg-yellow-50 border border-yellow-200 text-yellow-700"
+              }`}
+            >
+              {paymentForm.documentType === "receipt" ? (
+                <>
+                  <strong>Receipt selected:</strong> Tenant will receive a
+                  payment receipt + login credentials immediately. Account is
+                  activated now.
+                </>
+              ) : (
+                <>
+                  <strong>Invoice selected:</strong> Tenant will receive an
+                  invoice only. Login credentials will be sent once you confirm
+                  payment has been received.
+                </>
+              )}
+            </div>
+
+            {/* Amount + currency */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>
+                  Amount <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1.5"
+                  placeholder="0"
+                  value={paymentForm.amount || ""}
+                  onChange={(e) =>
+                    setPaymentForm((p) => ({
+                      ...p,
+                      amount: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Currency</Label>
+                <Select
+                  value={paymentForm.currency}
+                  onValueChange={(v) =>
+                    setPaymentForm((p) => ({
+                      ...p,
+                      currency: v as "USD" | "RWF",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="RWF">RWF</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Payment reference */}
+            <div>
+              <Label>Payment Reference (optional)</Label>
+              <Input
+                className="mt-1.5"
+                placeholder="Bank transfer ref, cheque number, etc."
+                value={paymentForm.paymentReference}
+                onChange={(e) =>
+                  setPaymentForm((p) => ({
+                    ...p,
+                    paymentReference: e.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <Label>Notes (optional)</Label>
+              <Textarea
+                className="mt-1.5"
+                rows={2}
+                placeholder="Any additional notes about this payment…"
+                value={paymentForm.notes}
+                onChange={(e) =>
+                  setPaymentForm((p) => ({ ...p, notes: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              className="text-muted-foreground text-sm"
+              onClick={skipPaymentRecording}
+              disabled={paymentMutation.isPending}
+            >
+              Skip for now
+            </Button>
+            <Button
+              className="gradient-primary"
+              disabled={!paymentForm.amount || paymentMutation.isPending}
+              onClick={() => {
+                if (!createdTenantId) return;
+                paymentMutation.mutate({
+                  tenantId: createdTenantId,
+                  plan: createdTenantPlan,
+                  ...paymentForm,
+                });
+              }}
+            >
+              {paymentMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Recording…
+                </>
+              ) : paymentForm.documentType === "receipt" ? (
+                <>
+                  <Receipt className="h-4 w-4 mr-2" /> Record Receipt & Activate
+                </>
+              ) : (
+                <>
+                  <FileText className="h-4 w-4 mr-2" /> Send Invoice
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Change Plan Dialog ── */}
       <Dialog open={planOpen} onOpenChange={setPlanOpen}>
         <DialogContent className="max-w-md">
@@ -939,7 +1220,7 @@ export default function Tenants() {
               <Label>Addon Modules</Label>
               <div className="flex gap-2 mt-1.5">
                 <Input
-                  placeholder="e.g. kyc/aml"
+                  placeholder="e.g. kyc_aml"
                   value={addonInput}
                   onChange={(e) => setAddonInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addAddon()}
@@ -982,8 +1263,7 @@ export default function Tenants() {
             >
               {planMutation.isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Updating…
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating…
                 </>
               ) : (
                 "Update Plan"
@@ -1002,7 +1282,7 @@ export default function Tenants() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Tenant</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanantly delete{" "}
+              This will permanently delete{" "}
               <strong>
                 {deleteTarget?.tenantProfile?.businessName ??
                   deleteTarget?.firstName}

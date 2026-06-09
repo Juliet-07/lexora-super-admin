@@ -30,7 +30,6 @@ import { api } from "@/lib/api";
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Subscriptions", url: "/subscriptions", icon: CreditCard },
-  { title: "Transactions", url: "/transactions", icon: Receipt },
   { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Tenants", url: "/tenants", icon: Building2 },
 ];
@@ -38,6 +37,7 @@ const mainItems = [
 const systemItems = [
   // { title: "Audit Logs", url: "/audit-logs", icon: ScrollText },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Transactions", url: "/transactions", icon: Receipt },
 ];
 
 type profileData = {
