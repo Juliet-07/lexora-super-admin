@@ -13,6 +13,7 @@ import {
   Trash2,
   RefreshCw,
   User,
+  Users,
   Receipt,
   FileText,
 } from "lucide-react";
@@ -113,6 +114,7 @@ type Tenant = {
   status: string;
   createdAt: string;
   clientCount: number;
+  userCount: number; // ← team members added by this tenant
   tenantProfile?: { businessName: string; industry: string; website?: string };
   subscription?: { plan: string; status: string; activeModules: string[] };
 };
@@ -137,7 +139,6 @@ const INDUSTRY_OPTIONS = [
   "Other",
 ];
 const STEPS = ["Account Info", "Business Info", "Address", "Contact Person"];
-
 const defaultAddress: Address = {
   street: "",
   city: "",
@@ -186,7 +187,7 @@ export default function Tenants() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<CreateTenantPayload>(defaultPayload);
 
-  // ── Payment recording dialog (opens after create on paid plan) ──
+  // Payment recording dialog
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [createdTenantId, setCreatedTenantId] = useState<string | null>(null);
   const [createdTenantName, setCreatedTenantName] = useState("");
@@ -201,14 +202,11 @@ export default function Tenants() {
     notes: "",
   });
 
-  // ── Change plan dialog ──
   const [planOpen, setPlanOpen] = useState(false);
   const [planTarget, setPlanTarget] = useState<Tenant | null>(null);
   const [planForm, setPlanForm] =
     useState<ChangePlanPayload>(defaultPlanPayload);
   const [addonInput, setAddonInput] = useState("");
-
-  // ── Delete dialog ──
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
 
   useEffect(() => {
@@ -239,14 +237,11 @@ export default function Tenants() {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setCreateOpen(false);
       setStep(0);
-
       const tenantId = res.data?.data?._id ?? res.data?._id;
       const planChosen = payload.plan;
       const name =
         payload.businessName || `${payload.firstName} ${payload.lastName}`;
-
       if (planChosen !== "free") {
-        // Paid plan — open payment recording dialog
         setCreatedTenantId(tenantId);
         setCreatedTenantName(name);
         setCreatedTenantPlan(planChosen);
@@ -259,7 +254,6 @@ export default function Tenants() {
         });
         setPaymentOpen(true);
       } else {
-        // Free plan — credentials already sent
         setForm(defaultPayload);
         toast.success("Tenant created. Login credentials sent by email.");
       }
@@ -277,16 +271,11 @@ export default function Tenants() {
       setPaymentOpen(false);
       setForm(defaultPayload);
       setCreatedTenantId(null);
-
-      if (payload.documentType === "receipt") {
-        toast.success(
-          "Payment recorded. Receipt and login credentials sent to tenant.",
-        );
-      } else {
-        toast.success(
-          "Invoice sent. Tenant will receive login credentials once payment is confirmed.",
-        );
-      }
+      toast.success(
+        payload.documentType === "receipt"
+          ? "Payment recorded. Receipt and login credentials sent to tenant."
+          : "Invoice sent. Tenant will receive credentials once payment is confirmed.",
+      );
     },
     onError: (err: any) =>
       toast.error(err?.response?.data?.message ?? "Failed to record payment"),
@@ -299,7 +288,7 @@ export default function Tenants() {
     toast.info("Tenant created. Record payment later from the tenant profile.");
   };
 
-  // ── Delete Tenant ─────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/super-admin/tenants/${id}`),
     onSuccess: () => {
@@ -393,7 +382,6 @@ export default function Tenants() {
           </p>
         </div>
 
-        {/* ── Create dialog ── */}
         <Dialog
           open={createOpen}
           onOpenChange={(v) => {
@@ -467,7 +455,7 @@ export default function Tenants() {
                   <Label>Phone</Label>
                   <Input
                     className="mt-1.5"
-                    placeholder="+1234567890"
+                    placeholder="+250700000000"
                     value={form.phone}
                     onChange={(e) => setField("phone", e.target.value)}
                   />
@@ -588,7 +576,7 @@ export default function Tenants() {
                     />
                   </div>
                   <div>
-                    <Label>State / Province</Label>
+                    <Label>State</Label>
                     <Input
                       className="mt-1.5"
                       placeholder="Kigali City"
@@ -758,6 +746,7 @@ export default function Tenants() {
                   "Status",
                   "Industry",
                   "Clients",
+                  "Users",
                   "Modules",
                   "Actions",
                 ].map((h) => (
@@ -834,8 +823,16 @@ export default function Tenants() {
                       </span>
                     </td>
                     <td className="p-4 text-sm text-foreground">{industry}</td>
+                    {/* Clients */}
                     <td className="p-4 text-sm text-foreground text-center">
                       {tenant.clientCount}
+                    </td>
+                    {/* Users (team members) — NEW COLUMN */}
+                    <td className="p-4 text-sm text-foreground text-center">
+                      <span className="inline-flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                        {tenant.userCount ?? 0}
+                      </span>
                     </td>
                     <td className="p-4">
                       {modules.length > 0 ? (
@@ -944,8 +941,7 @@ export default function Tenants() {
         </div>
       )}
 
-      {/* ── Payment Recording Dialog ─────────────────────────── */}
-      {/* Opens automatically after tenant is created on a paid plan */}
+      {/* ── Payment Recording Dialog ── */}
       <Dialog open={paymentOpen} onOpenChange={() => {}}>
         <DialogContent
           className="max-w-md"
@@ -956,57 +952,43 @@ export default function Tenants() {
             <DialogDescription>
               <strong>{createdTenantName}</strong> has been created on the{" "}
               <strong className="capitalize">{createdTenantPlan}</strong> plan.
-              Record how payment was handled — this determines what email the
-              tenant receives.
+              Record how payment was handled.
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-2">
-            {/* Document type — receipt or invoice */}
             <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() =>
-                  setPaymentForm((p) => ({ ...p, documentType: "receipt" }))
-                }
-                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                  paymentForm.documentType === "receipt"
-                    ? "border-primary bg-primary/5"
-                    : "border-muted hover:border-primary/40"
-                }`}
-              >
-                <Receipt
-                  className={`h-6 w-6 ${paymentForm.documentType === "receipt" ? "text-primary" : "text-muted-foreground"}`}
-                />
-                <div className="text-center">
-                  <p className="text-sm font-semibold">Receipt</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Payment already received
-                  </p>
-                </div>
-              </button>
-              <button
-                onClick={() =>
-                  setPaymentForm((p) => ({ ...p, documentType: "invoice" }))
-                }
-                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                  paymentForm.documentType === "invoice"
-                    ? "border-primary bg-primary/5"
-                    : "border-muted hover:border-primary/40"
-                }`}
-              >
-                <FileText
-                  className={`h-6 w-6 ${paymentForm.documentType === "invoice" ? "text-primary" : "text-muted-foreground"}`}
-                />
-                <div className="text-center">
-                  <p className="text-sm font-semibold">Invoice</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Payment not yet received
-                  </p>
-                </div>
-              </button>
+              {(["receipt", "invoice"] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() =>
+                    setPaymentForm((p) => ({ ...p, documentType: type }))
+                  }
+                  className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                    paymentForm.documentType === type
+                      ? "border-primary bg-primary/5"
+                      : "border-muted hover:border-primary/40"
+                  }`}
+                >
+                  {type === "receipt" ? (
+                    <Receipt
+                      className={`h-6 w-6 ${paymentForm.documentType === type ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                  ) : (
+                    <FileText
+                      className={`h-6 w-6 ${paymentForm.documentType === type ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                  )}
+                  <div className="text-center">
+                    <p className="text-sm font-semibold capitalize">{type}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {type === "receipt"
+                        ? "Payment already received"
+                        : "Payment not yet received"}
+                    </p>
+                  </div>
+                </button>
+              ))}
             </div>
-
-            {/* What happens notice */}
             <div
               className={`p-3 rounded-lg text-xs ${
                 paymentForm.documentType === "receipt"
@@ -1016,20 +998,16 @@ export default function Tenants() {
             >
               {paymentForm.documentType === "receipt" ? (
                 <>
-                  <strong>Receipt selected:</strong> Tenant will receive a
-                  payment receipt + login credentials immediately. Account is
-                  activated now.
+                  <strong>Receipt:</strong> Tenant receives receipt +
+                  credentials. Account activated now.
                 </>
               ) : (
                 <>
-                  <strong>Invoice selected:</strong> Tenant will receive an
-                  invoice only. Login credentials will be sent once you confirm
-                  payment has been received.
+                  <strong>Invoice:</strong> Tenant receives invoice only.
+                  Credentials sent once you confirm payment.
                 </>
               )}
             </div>
-
-            {/* Amount + currency */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>
@@ -1070,8 +1048,6 @@ export default function Tenants() {
                 </Select>
               </div>
             </div>
-
-            {/* Payment reference */}
             <div>
               <Label>Payment Reference (optional)</Label>
               <Input
@@ -1086,14 +1062,12 @@ export default function Tenants() {
                 }
               />
             </div>
-
-            {/* Notes */}
             <div>
               <Label>Notes (optional)</Label>
               <Textarea
                 className="mt-1.5"
                 rows={2}
-                placeholder="Any additional notes about this payment…"
+                placeholder="Any additional notes…"
                 value={paymentForm.notes}
                 onChange={(e) =>
                   setPaymentForm((p) => ({ ...p, notes: e.target.value }))
@@ -1101,7 +1075,6 @@ export default function Tenants() {
               />
             </div>
           </div>
-
           <DialogFooter className="gap-2">
             <Button
               variant="ghost"
