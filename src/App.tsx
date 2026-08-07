@@ -15,6 +15,8 @@ import AuditLogs from "./pages/AuditLogs";
 import SystemSettings from "./pages/SystemSettings";
 import NotFound from "./pages/NotFound";
 import TenantDetail from "./pages/TenantDetails";
+import KnowledgeLibrary from "./pages/KnowledgeLibrary";
+import KnowledgeEntryEditor from "./pages/KnowledgeEntryEditor";
 
 const queryClient = new QueryClient();
 
