@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, Save, Send, Undo2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Eye, Loader2, Save, Send, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +29,7 @@ import {
   CATEGORIES,
   createEntry,
   emptyEntry,
-  getEntry,
+  fetchEntry,
   setStatus,
   updateEntry,
   type Category,
@@ -41,32 +42,50 @@ export default function KnowledgeEntryEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const existing = id && id !== "new" ? getEntry(id) : undefined;
-  const [entryId, setEntryId] = useState<string | undefined>(existing?.id);
-  const [status, setLocalStatus] = useState<EntryStatus>(
-    existing?.status ?? "Draft",
-  );
-  const [form, setForm] = useState<EntryInput>(
-    existing
-      ? {
-          title: existing.title,
-          category: existing.category,
-          practiceArea: existing.practiceArea,
-          jurisdiction: existing.jurisdiction ?? "",
-          summary: existing.summary,
-          content: existing.content,
-          reference: existing.reference ?? "",
-          source: existing.source ?? "",
-          externalLink: existing.externalLink ?? "",
-        }
-      : emptyEntry,
-  );
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const isNew = !id || id === "new";
+
+  const {
+    data: existing,
+    isLoading: loadingExisting,
+    isError: loadError,
+  } = useQuery({
+    queryKey: ["knowledgeEntry", id],
+    queryFn: () => fetchEntry(id as string),
+    enabled: !isNew,
+  });
 
   useEffect(() => {
-    if (id && id !== "new" && !existing) navigate("/knowledge", { replace: true });
-  }, [id, existing, navigate]);
+    if (!isNew && loadError) navigate("/knowledge", { replace: true });
+  }, [isNew, loadError, navigate]);
+
+  const [entryId, setEntryId] = useState<string | undefined>(undefined);
+  const [status, setLocalStatus] = useState<EntryStatus>("Draft");
+  const [form, setForm] = useState<EntryInput>(emptyEntry);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [hydrated, setHydrated] = useState(isNew);
+
+  // Populate the form once the existing entry has actually loaded —
+  // can't do this synchronously anymore now that it's a real fetch.
+  useEffect(() => {
+    if (existing && !hydrated) {
+      setEntryId(existing.id);
+      setLocalStatus(existing.status);
+      setForm({
+        title: existing.title,
+        category: existing.category,
+        practiceArea: existing.practiceArea,
+        jurisdiction: existing.jurisdiction ?? "",
+        summary: existing.summary,
+        content: existing.content,
+        reference: existing.reference ?? "",
+        source: existing.source ?? "",
+        externalLink: existing.externalLink ?? "",
+      });
+      setHydrated(true);
+    }
+  }, [existing, hydrated]);
 
   const set = <K extends keyof EntryInput>(key: K, value: EntryInput[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -88,19 +107,55 @@ export default function KnowledgeEntryEditor() {
   const validate = (forPublish: boolean) => {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "Title is required.";
-    if (!form.practiceArea.trim()) next.practiceArea = "Practice area is required.";
-    if (form.title.length > 200) next.title = "Keep the title under 200 characters.";
-    if (form.summary.length > 600) next.summary = "Keep the summary under 600 characters.";
+    if (!form.practiceArea.trim())
+      next.practiceArea = "Practice area is required.";
+    if (form.title.length > 200)
+      next.title = "Keep the title under 200 characters.";
+    if (form.summary.length > 600)
+      next.summary = "Keep the summary under 600 characters.";
     if (form.externalLink && !/^https?:\/\/\S+$/i.test(form.externalLink))
       next.externalLink = "Enter a valid URL starting with http:// or https://";
     if (forPublish) {
-      if (!form.summary.trim()) next.summary = "A summary is required before publishing.";
+      if (!form.summary.trim())
+        next.summary = "A summary is required before publishing.";
       const text = form.content.replace(/<[^>]*>/g, "").trim();
       if (!text) next.content = "Add content before publishing.";
     }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
+
+  const saveMutation = useMutation({
+    mutationFn: ({ nextStatus }: { nextStatus: EntryStatus }) =>
+      entryId
+        ? updateEntry(entryId, form, nextStatus)
+        : createEntry(form, nextStatus),
+    onSuccess: (saved, { nextStatus }) => {
+      queryClient.invalidateQueries({ queryKey: ["knowledgeEntries"] });
+      // Pre-populate the single-entry cache under the real id before
+      // navigating off "/knowledge/new" — otherwise the id-change
+      // would trigger a fresh fetch and flash the loading screen
+      // right after the entry was just saved.
+      queryClient.setQueryData(["knowledgeEntry", saved.id], saved);
+      const wasNew = !entryId;
+      setEntryId(saved.id);
+      setLocalStatus(nextStatus);
+      toast({
+        title: nextStatus === "Published" ? "Entry published" : "Draft saved",
+        description:
+          nextStatus === "Published"
+            ? `"${form.title}" is now live in the library.`
+            : `"${form.title}" was saved as a draft.`,
+      });
+      if (wasNew) navigate(`/knowledge/${saved.id}`, { replace: true });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to save",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
 
   const persist = (nextStatus: EntryStatus) => {
     if (!validate(nextStatus === "Published")) {
@@ -111,34 +166,42 @@ export default function KnowledgeEntryEditor() {
       });
       return;
     }
-    if (entryId) {
-      updateEntry(entryId, form, nextStatus);
-    } else {
-      const created = createEntry(form, nextStatus);
-      setEntryId(created.id);
-    }
-    setLocalStatus(nextStatus);
-    toast({
-      title: nextStatus === "Published" ? "Entry published" : "Draft saved",
-      description:
-        nextStatus === "Published"
-          ? `"${form.title}" is now live in the library.`
-          : `"${form.title}" was saved as a draft.`,
-    });
+    saveMutation.mutate({ nextStatus });
   };
 
-  const unpublish = () => {
-    if (!entryId) return;
-    setStatus(entryId, "Draft");
-    setLocalStatus("Draft");
-    toast({ title: "Entry unpublished", description: "It is now a draft again." });
-  };
+  const unpublishMutation = useMutation({
+    mutationFn: () => setStatus(entryId as string, "Draft"),
+    onSuccess: (saved) => {
+      queryClient.invalidateQueries({ queryKey: ["knowledgeEntries"] });
+      queryClient.setQueryData(["knowledgeEntry", saved.id], saved);
+      setLocalStatus("Draft");
+      toast({
+        title: "Entry unpublished",
+        description: "It is now a draft again.",
+      });
+    },
+  });
+
+  if (!isNew && (loadingExisting || !hydrated)) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading entry…</span>
+      </div>
+    );
+  }
+
+  const saving = saveMutation.isPending;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/knowledge")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/knowledge")}
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -164,17 +227,33 @@ export default function KnowledgeEntryEditor() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {status === "Published" && entryId && (
-            <Button variant="outline" onClick={unpublish}>
-              <Undo2 className="mr-2 h-4 w-4" />
+            <Button
+              variant="outline"
+              disabled={unpublishMutation.isPending}
+              onClick={() => unpublishMutation.mutate()}
+            >
+              {unpublishMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Undo2 className="mr-2 h-4 w-4" />
+              )}
               Unpublish
             </Button>
           )}
-          <Button variant="outline" onClick={() => persist("Draft")}>
+          <Button
+            variant="outline"
+            disabled={saving}
+            onClick={() => persist("Draft")}
+          >
             <Save className="mr-2 h-4 w-4" />
             Save draft
           </Button>
-          <Button onClick={() => persist("Published")}>
-            <Send className="mr-2 h-4 w-4" />
+          <Button disabled={saving} onClick={() => persist("Published")}>
+            {saving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="mr-2 h-4 w-4" />
+            )}
             {status === "Published" ? "Save & republish" : "Publish"}
           </Button>
         </div>
@@ -196,7 +275,8 @@ export default function KnowledgeEntryEditor() {
                 <CardHeader>
                   <CardTitle className="text-base">Entry details</CardTitle>
                   <CardDescription>
-                    Core information shown in the library list and search results.
+                    Core information shown in the library list and search
+                    results.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

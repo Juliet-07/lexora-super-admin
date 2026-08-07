@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Plus,
@@ -11,6 +12,7 @@ import {
   Undo2,
   ExternalLink,
   ArrowUpDown,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,9 +52,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   CATEGORIES,
   deleteEntry,
+  fetchEntries,
   practiceAreas,
   setStatus,
-  useKnowledgeEntries,
   type KnowledgeEntry,
 } from "@/lib/knowledge";
 import { EntryPreviewDialog } from "@/components/EntryPreviewDialog";
@@ -69,9 +71,19 @@ const formatDate = (value?: string) =>
 type SortKey = "updated" | "published" | "title";
 
 export default function KnowledgeLibrary() {
-  const entries = useKnowledgeEntries();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const {
+    data: entries = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["knowledgeEntries"],
+    queryFn: fetchEntries,
+    staleTime: 60 * 1000,
+  });
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
@@ -79,9 +91,44 @@ export default function KnowledgeLibrary() {
   const [status, setStatusFilter] = useState("all");
   const [sort, setSort] = useState<SortKey>("updated");
   const [previewEntry, setPreviewEntry] = useState<KnowledgeEntry | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<KnowledgeEntry | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<KnowledgeEntry | null>(
+    null,
+  );
 
-  const areas = useMemo(() => practiceAreas(), [entries]);
+  const areas = useMemo(() => practiceAreas(entries), [entries]);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["knowledgeEntries"] });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: "Draft" | "Published" }) =>
+      setStatus(id, next),
+    onSuccess: () => invalidate(),
+    onError: (err: any) =>
+      toast({
+        title: "Failed to update status",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteEntry(id),
+    onSuccess: () => {
+      invalidate();
+      toast({
+        title: "Entry deleted",
+        description: `"${pendingDelete?.title}" has been removed from the library.`,
+      });
+      setPendingDelete(null);
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to delete entry",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -112,25 +159,39 @@ export default function KnowledgeLibrary() {
 
   const toggleStatus = (entry: KnowledgeEntry) => {
     const next = entry.status === "Published" ? "Draft" : "Published";
-    setStatus(entry.id, next);
-    toast({
-      title: next === "Published" ? "Entry published" : "Entry unpublished",
-      description:
-        next === "Published"
-          ? `"${entry.title}" is now visible to tenants.`
-          : `"${entry.title}" is back to draft and hidden from tenants.`,
-    });
+    statusMutation.mutate(
+      { id: entry.id, next },
+      {
+        onSuccess: () =>
+          toast({
+            title:
+              next === "Published" ? "Entry published" : "Entry unpublished",
+            description:
+              next === "Published"
+                ? `"${entry.title}" is now visible to tenants.`
+                : `"${entry.title}" is back to draft and hidden from tenants.`,
+          }),
+      },
+    );
   };
 
-  const confirmDelete = () => {
-    if (!pendingDelete) return;
-    deleteEntry(pendingDelete.id);
-    toast({
-      title: "Entry deleted",
-      description: `"${pendingDelete.title}" has been removed from the library.`,
-    });
-    setPendingDelete(null);
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-3 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Loading knowledge library…</span>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center h-64 text-destructive text-sm">
+        Failed to load the knowledge library. Check your connection and try
+        again.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -238,7 +299,9 @@ export default function KnowledgeLibrary() {
               {filtered.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="align-top">
-                    <div className="font-medium text-foreground">{entry.title}</div>
+                    <div className="font-medium text-foreground">
+                      {entry.title}
+                    </div>
                     <p className="mt-1 line-clamp-2 max-w-xl text-xs text-muted-foreground">
                       {entry.summary}
                     </p>
@@ -268,7 +331,9 @@ export default function KnowledgeLibrary() {
                   </TableCell>
                   <TableCell className="align-top">
                     <Badge
-                      variant={entry.status === "Published" ? "default" : "secondary"}
+                      variant={
+                        entry.status === "Published" ? "default" : "secondary"
+                      }
                     >
                       {entry.status}
                     </Badge>
@@ -312,6 +377,7 @@ export default function KnowledgeLibrary() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            disabled={statusMutation.isPending}
                             onClick={() => toggleStatus(entry)}
                           >
                             {entry.status === "Published" ? (
@@ -322,7 +388,9 @@ export default function KnowledgeLibrary() {
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {entry.status === "Published" ? "Unpublish" : "Publish"}
+                          {entry.status === "Published"
+                            ? "Unpublish"
+                            : "Publish"}
                         </TooltipContent>
                       </Tooltip>
                       <Tooltip>
@@ -377,10 +445,17 @@ export default function KnowledgeLibrary() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
+              onClick={() =>
+                pendingDelete && deleteMutation.mutate(pendingDelete.id)
+              }
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete entry
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Delete entry"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
