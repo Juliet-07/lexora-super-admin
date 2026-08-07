@@ -8,6 +8,7 @@ import {
   Shield,
   Crown,
   Boxes,
+  BookOpen,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -32,6 +33,7 @@ const mainItems = [
   { title: "Subscriptions", url: "/subscriptions", icon: CreditCard },
   { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Tenants", url: "/tenants", icon: Building2 },
+  { title: "Knowledge Library", url: "/knowledge", icon: BookOpen },
 ];
 
 const systemItems = [

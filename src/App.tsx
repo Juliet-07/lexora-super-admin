@@ -15,6 +15,8 @@ import AuditLogs from "./pages/AuditLogs";
 import SystemSettings from "./pages/SystemSettings";
 import NotFound from "./pages/NotFound";
 import TenantDetail from "./pages/TenantDetails";
+import KnowledgeLibrary from "./pages/KnowledgeLibrary";
+import KnowledgeEntryEditor from "./pages/KnowledgeEntryEditor";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +38,9 @@ const App = () => (
                     <Route path="/tenants" element={<Tenants />} />
                     <Route path="/tenants/:id" element={<TenantDetail />} />
                     <Route path="/modules" element={<Modules />} />
+                    <Route path="/knowledge" element={<KnowledgeLibrary />} />
+                    <Route path="/knowledge/new" element={<KnowledgeEntryEditor />} />
+                    <Route path="/knowledge/:id" element={<KnowledgeEntryEditor />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/audit-logs" element={<AuditLogs />} />
