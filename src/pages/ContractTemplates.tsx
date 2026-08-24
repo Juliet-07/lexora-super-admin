@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileText,
   Plus,
@@ -8,6 +9,9 @@ import {
   Eye,
   Send,
   Undo2,
+  Upload,
+  FileUp,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,79 +56,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { RichTextEditor, RichTextView } from "@/components/RichTextEditor";
+import {
+  CATEGORIES,
+  emptyTemplate,
+  fetchTemplates,
+  createTemplate,
+  updateTemplate,
+  setStatus as setTemplateStatus,
+  deleteTemplate,
+  uploadTemplate,
+  replaceTemplateFile,
+  type ContractTemplate,
+  type Category,
+  type TemplateStatus,
+} from "@/lib/contract-template";
 
-const CATEGORIES = [
-  "Employment",
-  "Commercial",
-  "Property",
-  "NDA",
-  "Services",
-  "Corporate",
-] as const;
-
-type Category = (typeof CATEGORIES)[number];
-type Status = "Draft" | "Published";
-
-interface ContractTemplate {
-  id: string;
-  title: string;
-  category: Category;
-  jurisdiction: string;
-  description: string;
-  content: string;
-  version: string;
-  status: Status;
-  updatedAt: string;
-}
-
-const emptyForm = {
-  title: "",
-  category: "Employment" as Category,
-  jurisdiction: "",
-  description: "",
-  content: "",
-  version: "1.0",
-};
-
-const seed: ContractTemplate[] = [
-  {
-    id: "tpl-1",
-    title: "Standard Employment Agreement",
-    category: "Employment",
-    jurisdiction: "Rwanda",
-    description:
-      "Full-time employment contract covering remuneration, probation and termination.",
-    content:
-      "<h2>Employment Agreement</h2><p>This Agreement is made between <strong>[Employer]</strong> and <strong>[Employee]</strong>.</p><h3>1. Position</h3><p>The Employee shall serve as [Job Title].</p><h3>2. Remuneration</h3><p>The Employee shall be paid [Amount] per month.</p>",
-    version: "2.1",
-    status: "Published",
-    updatedAt: "2026-07-14T10:00:00.000Z",
-  },
-  {
-    id: "tpl-2",
-    title: "Mutual Non-Disclosure Agreement",
-    category: "NDA",
-    jurisdiction: "International",
-    description: "Two-way confidentiality agreement for commercial discussions.",
-    content:
-      "<h2>Mutual NDA</h2><p>Each party may disclose confidential information to the other.</p><h3>Term</h3><p>This Agreement remains in effect for three (3) years.</p>",
-    version: "1.3",
-    status: "Published",
-    updatedAt: "2026-08-02T09:30:00.000Z",
-  },
-  {
-    id: "tpl-3",
-    title: "Commercial Lease Agreement",
-    category: "Property",
-    jurisdiction: "Kenya",
-    description: "Lease of commercial premises with renewal and rent review terms.",
-    content:
-      "<h2>Commercial Lease</h2><p>The Landlord lets and the Tenant takes the Premises described below.</p>",
-    version: "1.0",
-    status: "Draft",
-    updatedAt: "2026-08-18T15:45:00.000Z",
-  },
-];
+const WORD_ACCEPT =
+  ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -135,14 +83,24 @@ const formatDate = (value: string) =>
 
 export default function ContractTemplates() {
   const { toast } = useToast();
-  const [templates, setTemplates] = useState<ContractTemplate[]>(seed);
+  const queryClient = useQueryClient();
+
+  const { data: templates = [], isLoading } = useQuery({
+    queryKey: ["contractTemplates"],
+    queryFn: fetchTemplates,
+    staleTime: 60 * 1000,
+  });
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["contractTemplates"] });
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState("all");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyTemplate);
   const [preview, setPreview] = useState<ContractTemplate | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ContractTemplate | null>(
     null,
@@ -157,7 +115,7 @@ export default function ContractTemplates() {
         q
           ? t.title.toLowerCase().includes(q) ||
             t.description.toLowerCase().includes(q) ||
-            t.jurisdiction.toLowerCase().includes(q)
+            (t.jurisdiction ?? "").toLowerCase().includes(q)
           : true,
       )
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -167,7 +125,7 @@ export default function ContractTemplates() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm(emptyTemplate);
     setEditorOpen(true);
   };
 
@@ -176,7 +134,7 @@ export default function ContractTemplates() {
     setForm({
       title: t.title,
       category: t.category,
-      jurisdiction: t.jurisdiction,
+      jurisdiction: t.jurisdiction ?? "",
       description: t.description,
       content: t.content,
       version: t.version,
@@ -184,63 +142,136 @@ export default function ContractTemplates() {
     setEditorOpen(true);
   };
 
-  const save = (nextStatus: Status) => {
+  const saveMutation = useMutation({
+    mutationFn: ({ nextStatus }: { nextStatus: TemplateStatus }) =>
+      editingId
+        ? updateTemplate(editingId, form).then((t) =>
+            t.status === nextStatus ? t : setTemplateStatus(t.id, nextStatus),
+          )
+        : createTemplate(form).then((t) =>
+            nextStatus === "Published"
+              ? setTemplateStatus(t.id, nextStatus)
+              : t,
+          ),
+    onSuccess: (_t, vars) => {
+      invalidate();
+      setEditorOpen(false);
+      toast({
+        title:
+          vars.nextStatus === "Published"
+            ? "Template published to tenants"
+            : "Draft saved",
+      });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to save template",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
+  const save = (nextStatus: TemplateStatus) => {
     if (!form.title.trim()) {
       toast({ title: "Title is required", variant: "destructive" });
       return;
     }
-    const now = new Date().toISOString();
-    if (editingId) {
-      setTemplates((prev) =>
-        prev.map((t) =>
-          t.id === editingId
-            ? { ...t, ...form, status: nextStatus, updatedAt: now }
-            : t,
-        ),
-      );
-    } else {
-      setTemplates((prev) => [
-        {
-          id: `tpl-${Date.now()}`,
-          ...form,
-          status: nextStatus,
-          updatedAt: now,
-        },
-        ...prev,
-      ]);
-    }
-    setEditorOpen(false);
-    toast({
-      title:
-        nextStatus === "Published"
-          ? "Template published to tenants"
-          : "Draft saved",
-    });
+    saveMutation.mutate({ nextStatus });
   };
 
-  const toggleStatus = (t: ContractTemplate) => {
-    const next: Status = t.status === "Published" ? "Draft" : "Published";
-    setTemplates((prev) =>
-      prev.map((x) =>
-        x.id === t.id
-          ? { ...x, status: next, updatedAt: new Date().toISOString() }
-          : x,
-      ),
-    );
-    toast({
-      title:
-        next === "Published"
-          ? "Template is now visible to tenants"
-          : "Template unpublished",
+  const statusMutation = useMutation({
+    mutationFn: (t: ContractTemplate) =>
+      setTemplateStatus(t.id, t.status === "Published" ? "Draft" : "Published"),
+    onSuccess: (t) => {
+      invalidate();
+      toast({
+        title:
+          t.status === "Published"
+            ? "Template is now visible to tenants"
+            : "Template unpublished",
+      });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to update status",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteTemplate(id),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Template deleted" });
+      setPendingDelete(null);
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to delete template",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
+  // ── Upload ────────────────────────────────────────────────
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadMeta, setUploadMeta] = useState({
+    title: "",
+    category: "Employment" as Category,
+    jurisdiction: "",
+    description: "",
+    version: "1.0",
+  });
+  const [replaceTarget, setReplaceTarget] = useState<ContractTemplate | null>(
+    null,
+  );
+
+  const openUpload = () => {
+    setUploadFile(null);
+    setUploadMeta({
+      title: "",
+      category: "Employment",
+      jurisdiction: "",
+      description: "",
+      version: "1.0",
     });
+    setUploadOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (!pendingDelete) return;
-    setTemplates((prev) => prev.filter((t) => t.id !== pendingDelete.id));
-    setPendingDelete(null);
-    toast({ title: "Template deleted" });
-  };
+  const uploadMutation = useMutation({
+    mutationFn: () => uploadTemplate(uploadFile as File, uploadMeta),
+    onSuccess: () => {
+      invalidate();
+      setUploadOpen(false);
+      toast({
+        title: "Template uploaded",
+        description: "Saved as a draft — publish when ready.",
+      });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to upload template",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
+  const replaceFileMutation = useMutation({
+    mutationFn: (file: File) => replaceTemplateFile(replaceTarget!.id, file),
+    onSuccess: () => {
+      invalidate();
+      setReplaceTarget(null);
+      toast({ title: "File replaced" });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to replace file",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
 
   return (
     <div className="space-y-6">
@@ -254,9 +285,14 @@ export default function ContractTemplates() {
             workspaces.
           </p>
         </div>
-        <Button onClick={openCreate} className="gradient-primary">
-          <Plus className="mr-2 h-4 w-4" /> New template
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openUpload}>
+            <Upload className="mr-2 h-4 w-4" /> Upload template
+          </Button>
+          <Button onClick={openCreate} className="gradient-primary">
+            <Plus className="mr-2 h-4 w-4" /> New template
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -345,7 +381,17 @@ export default function ContractTemplates() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 && (
+              {isLoading && (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="py-10 text-center text-sm text-muted-foreground"
+                  >
+                    Loading templates…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={7}
@@ -358,7 +404,14 @@ export default function ContractTemplates() {
               {filtered.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell>
-                    <p className="font-medium text-foreground">{t.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      {t.sourceType === "uploaded" && (
+                        <span title="Uploaded Word document">
+                          <FileUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </span>
+                      )}
+                      <p className="font-medium text-foreground">{t.title}</p>
+                    </div>
                     <p className="line-clamp-1 text-xs text-muted-foreground">
                       {t.description}
                     </p>
@@ -374,7 +427,9 @@ export default function ContractTemplates() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={t.status === "Published" ? "default" : "secondary"}
+                      variant={
+                        t.status === "Published" ? "default" : "secondary"
+                      }
                     >
                       {t.status}
                     </Badge>
@@ -392,18 +447,42 @@ export default function ContractTemplates() {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
+                      {t.sourceType === "uploaded" && t.fileUrl && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          asChild
+                          aria-label="Download original file"
+                        >
+                          <a href={t.fileUrl} target="_blank" rel="noreferrer">
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                      {t.sourceType === "uploaded" ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setReplaceTarget(t)}
+                          aria-label="Replace file"
+                        >
+                          <Upload className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(t)}
+                          aria-label="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => openEdit(t)}
-                        aria-label="Edit"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleStatus(t)}
+                        disabled={statusMutation.isPending}
+                        onClick={() => statusMutation.mutate(t)}
                         aria-label={
                           t.status === "Published" ? "Unpublish" : "Publish"
                         }
@@ -518,10 +597,18 @@ export default function ContractTemplates() {
             </div>
           </ScrollArea>
           <DialogFooter>
-            <Button variant="outline" onClick={() => save("Draft")}>
+            <Button
+              variant="outline"
+              disabled={saveMutation.isPending}
+              onClick={() => save("Draft")}
+            >
               Save draft
             </Button>
-            <Button className="gradient-primary" onClick={() => save("Published")}>
+            <Button
+              className="gradient-primary"
+              disabled={saveMutation.isPending}
+              onClick={() => save("Published")}
+            >
               <Send className="mr-2 h-4 w-4" /> Publish to tenants
             </Button>
           </DialogFooter>
@@ -554,6 +641,12 @@ export default function ContractTemplates() {
                     <span className="text-xs text-muted-foreground">
                       v{preview.version}
                     </span>
+                    {preview.sourceType === "uploaded" && (
+                      <Badge variant="outline" className="gap-1">
+                        <FileUp className="h-3 w-3" /> From uploaded Word
+                        document
+                      </Badge>
+                    )}
                   </div>
                   <h2 className="text-2xl font-bold leading-tight text-foreground">
                     {preview.title}
@@ -572,6 +665,139 @@ export default function ContractTemplates() {
         </DialogContent>
       </Dialog>
 
+      {/* Upload template */}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Upload contract template</DialogTitle>
+            <DialogDescription>
+              A Word document's real content is extracted automatically and
+              becomes the template's text — previewable and
+              editable-per-contract the same way an authored template is. Only
+              .doc/.docx files are accepted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="upload-file">Word document (.doc, .docx)</Label>
+              <Input
+                id="upload-file"
+                type="file"
+                accept={WORD_ACCEPT}
+                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+              />
+              {uploadFile && (
+                <p className="text-xs text-muted-foreground">
+                  {uploadFile.name} ·{" "}
+                  {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="upload-title">Title</Label>
+                <Input
+                  id="upload-title"
+                  value={uploadMeta.title}
+                  onChange={(e) =>
+                    setUploadMeta({ ...uploadMeta, title: e.target.value })
+                  }
+                  placeholder="e.g. Standard Employment Agreement"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select
+                  value={uploadMeta.category}
+                  onValueChange={(v) =>
+                    setUploadMeta({ ...uploadMeta, category: v as Category })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="upload-jurisdiction">Jurisdiction</Label>
+                <Input
+                  id="upload-jurisdiction"
+                  value={uploadMeta.jurisdiction}
+                  onChange={(e) =>
+                    setUploadMeta({
+                      ...uploadMeta,
+                      jurisdiction: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. Rwanda"
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="upload-description">Description</Label>
+                <Textarea
+                  id="upload-description"
+                  value={uploadMeta.description}
+                  onChange={(e) =>
+                    setUploadMeta({
+                      ...uploadMeta,
+                      description: e.target.value,
+                    })
+                  }
+                  placeholder="Short summary tenants will see in the template list"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              className="gradient-primary"
+              disabled={
+                !uploadFile ||
+                !uploadMeta.title.trim() ||
+                uploadMutation.isPending
+              }
+              onClick={() => uploadMutation.mutate()}
+            >
+              <Upload className="mr-2 h-4 w-4" /> Upload as draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Replace an uploaded template's file */}
+      <Dialog
+        open={!!replaceTarget}
+        onOpenChange={(o) => !o && setReplaceTarget(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Replace file — {replaceTarget?.title}</DialogTitle>
+            <DialogDescription>
+              The new document's content will be re-extracted, replacing the
+              current preview text.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="file"
+            accept={WORD_ACCEPT}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) replaceFileMutation.mutate(file);
+            }}
+          />
+          {replaceFileMutation.isPending && (
+            <p className="text-xs text-muted-foreground">Uploading…</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog
         open={!!pendingDelete}
         onOpenChange={(o) => !o && setPendingDelete(null)}
@@ -580,13 +806,20 @@ export default function ContractTemplates() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete template?</AlertDialogTitle>
             <AlertDialogDescription>
-              “{pendingDelete?.title}” will be removed and tenants will no
+              "{pendingDelete?.title}" will be removed and tenants will no
               longer see it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending}
+              onClick={() =>
+                pendingDelete && deleteMutation.mutate(pendingDelete.id)
+              }
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
