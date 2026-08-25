@@ -12,6 +12,9 @@ import {
   Upload,
   FileUp,
   Download,
+  Folder,
+  FolderPlus,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,9 +69,15 @@ import {
   deleteTemplate,
   uploadTemplate,
   replaceTemplateFile,
+  fetchFolders,
+  createFolder,
+  updateFolder,
+  deleteFolder,
+  setTemplateFolder,
   type ContractTemplate,
   type Category,
   type TemplateStatus,
+  type TemplateFolder,
 } from "@/lib/contract-template";
 
 const WORD_ACCEPT =
@@ -90,13 +99,22 @@ export default function ContractTemplates() {
     queryFn: fetchTemplates,
     staleTime: 60 * 1000,
   });
+  const { data: folders = [] } = useQuery({
+    queryKey: ["contractTemplateFolders"],
+    queryFn: fetchFolders,
+    staleTime: 60 * 1000,
+  });
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["contractTemplates"] });
+  const invalidateFolders = () =>
+    queryClient.invalidateQueries({ queryKey: ["contractTemplateFolders"] });
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState("all");
+  // "all" | "uncategorized" | a real folder id
+  const [selectedFolder, setSelectedFolder] = useState("all");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -111,6 +129,11 @@ export default function ContractTemplates() {
     return templates
       .filter((t) => (category === "all" ? true : t.category === category))
       .filter((t) => (status === "all" ? true : t.status === status))
+      .filter((t) => {
+        if (selectedFolder === "all") return true;
+        if (selectedFolder === "uncategorized") return !t.folderId;
+        return t.folderId === selectedFolder;
+      })
       .filter((t) =>
         q
           ? t.title.toLowerCase().includes(q) ||
@@ -119,7 +142,7 @@ export default function ContractTemplates() {
           : true,
       )
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }, [templates, search, category, status]);
+  }, [templates, search, category, status, selectedFolder]);
 
   const published = templates.filter((t) => t.status === "Published").length;
 
@@ -138,6 +161,7 @@ export default function ContractTemplates() {
       description: t.description,
       content: t.content,
       version: t.version,
+      folderId: t.folderId ?? null,
     });
     setEditorOpen(true);
   };
@@ -214,6 +238,73 @@ export default function ContractTemplates() {
       }),
   });
 
+  // ── Folders ───────────────────────────────────────────────
+  const [folderManagerOpen, setFolderManagerOpen] = useState(false);
+  const [folderDraft, setFolderDraft] = useState({ name: "", description: "" });
+  const [editingFolder, setEditingFolder] = useState<TemplateFolder | null>(
+    null,
+  );
+  const [pendingDeleteFolder, setPendingDeleteFolder] =
+    useState<TemplateFolder | null>(null);
+
+  const resetFolderDraft = () => {
+    setEditingFolder(null);
+    setFolderDraft({ name: "", description: "" });
+  };
+
+  const folderSaveMutation = useMutation({
+    mutationFn: () =>
+      editingFolder
+        ? updateFolder(editingFolder.id, folderDraft)
+        : createFolder(folderDraft),
+    onSuccess: () => {
+      invalidateFolders();
+      resetFolderDraft();
+      toast({ title: editingFolder ? "Folder updated" : "Folder created" });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to save folder",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
+  const folderDeleteMutation = useMutation({
+    mutationFn: (id: string) => deleteFolder(id),
+    onSuccess: () => {
+      invalidateFolders();
+      setPendingDeleteFolder(null);
+      toast({ title: "Folder deleted" });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't delete folder",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      });
+      setPendingDeleteFolder(null);
+    },
+  });
+
+  // Quick move — used from the table row, doesn't require opening
+  // the full edit dialog. Works on uploaded templates too, since
+  // folder placement is separate from content.
+  const moveFolderMutation = useMutation({
+    mutationFn: ({ id, folderId }: { id: string; folderId: string | null }) =>
+      setTemplateFolder(id, folderId),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Moved" });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to move template",
+        description: err?.response?.data?.message,
+        variant: "destructive",
+      }),
+  });
+
   // ── Upload ────────────────────────────────────────────────
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -223,6 +314,7 @@ export default function ContractTemplates() {
     jurisdiction: "",
     description: "",
     version: "1.0",
+    folderId: null as string | null,
   });
   const [replaceTarget, setReplaceTarget] = useState<ContractTemplate | null>(
     null,
@@ -236,6 +328,7 @@ export default function ContractTemplates() {
       jurisdiction: "",
       description: "",
       version: "1.0",
+      folderId: null,
     });
     setUploadOpen(true);
   };
@@ -331,6 +424,54 @@ export default function ContractTemplates() {
         </Card>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={selectedFolder === "all" ? "default" : "outline"}
+          onClick={() => setSelectedFolder("all")}
+        >
+          All templates
+          <Badge variant="secondary" className="ml-2">
+            {templates.length}
+          </Badge>
+        </Button>
+        <Button
+          size="sm"
+          variant={selectedFolder === "uncategorized" ? "default" : "outline"}
+          onClick={() => setSelectedFolder("uncategorized")}
+        >
+          Uncategorized
+          <Badge variant="secondary" className="ml-2">
+            {templates.filter((t) => !t.folderId).length}
+          </Badge>
+        </Button>
+        {folders.map((f) => (
+          <Button
+            key={f.id}
+            size="sm"
+            variant={selectedFolder === f.id ? "default" : "outline"}
+            onClick={() => setSelectedFolder(f.id)}
+          >
+            <Folder className="mr-1.5 h-3.5 w-3.5" />
+            {f.name}
+            <Badge variant="secondary" className="ml-2">
+              {f.templateCount}
+            </Badge>
+          </Button>
+        ))}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-muted-foreground"
+          onClick={() => {
+            resetFolderDraft();
+            setFolderManagerOpen(true);
+          }}
+        >
+          <Settings2 className="mr-1.5 h-3.5 w-3.5" /> Manage folders
+        </Button>
+      </div>
+
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap gap-3">
@@ -372,6 +513,7 @@ export default function ContractTemplates() {
             <TableHeader>
               <TableRow>
                 <TableHead>Template</TableHead>
+                <TableHead>Folder</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Jurisdiction</TableHead>
                 <TableHead>Version</TableHead>
@@ -384,7 +526,7 @@ export default function ContractTemplates() {
               {isLoading && (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     Loading templates…
@@ -394,7 +536,7 @@ export default function ContractTemplates() {
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     No templates match your filters.
@@ -415,6 +557,31 @@ export default function ContractTemplates() {
                     <p className="line-clamp-1 text-xs text-muted-foreground">
                       {t.description}
                     </p>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={t.folderId ?? "uncategorized"}
+                      onValueChange={(v) =>
+                        moveFolderMutation.mutate({
+                          id: t.id,
+                          folderId: v === "uncategorized" ? null : v,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[160px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="uncategorized">
+                          Uncategorized
+                        </SelectItem>
+                        {folders.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{t.category}</Badge>
@@ -574,6 +741,32 @@ export default function ContractTemplates() {
                       setForm({ ...form, version: e.target.value })
                     }
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Folder</Label>
+                  <Select
+                    value={form.folderId ?? "uncategorized"}
+                    onValueChange={(v) =>
+                      setForm({
+                        ...form,
+                        folderId: v === "uncategorized" ? null : v,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="uncategorized">
+                        Uncategorized
+                      </SelectItem>
+                      {folders.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="description">Description</Label>
@@ -739,6 +932,30 @@ export default function ContractTemplates() {
                   placeholder="e.g. Rwanda"
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Folder</Label>
+                <Select
+                  value={uploadMeta.folderId ?? "uncategorized"}
+                  onValueChange={(v) =>
+                    setUploadMeta({
+                      ...uploadMeta,
+                      folderId: v === "uncategorized" ? null : v,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                    {folders.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="upload-description">Description</Label>
                 <Textarea
@@ -816,6 +1033,151 @@ export default function ContractTemplates() {
               disabled={deleteMutation.isPending}
               onClick={() =>
                 pendingDelete && deleteMutation.mutate(pendingDelete.id)
+              }
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Manage folders */}
+      <Dialog
+        open={folderManagerOpen}
+        onOpenChange={(o) => {
+          setFolderManagerOpen(o);
+          if (!o) resetFolderDraft();
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Manage folders</DialogTitle>
+            <DialogDescription>
+              Folders organize the template library — tenants browse templates
+              grouped the same way.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label htmlFor="folder-name">
+                {editingFolder
+                  ? `Rename "${editingFolder.name}"`
+                  : "New folder"}
+              </Label>
+              <Input
+                id="folder-name"
+                value={folderDraft.name}
+                onChange={(e) =>
+                  setFolderDraft({ ...folderDraft, name: e.target.value })
+                }
+                placeholder="e.g. Employment Agreements"
+              />
+              <Input
+                value={folderDraft.description}
+                onChange={(e) =>
+                  setFolderDraft({
+                    ...folderDraft,
+                    description: e.target.value,
+                  })
+                }
+                placeholder="Description (optional)"
+              />
+              <div className="flex justify-end gap-2">
+                {editingFolder && (
+                  <Button variant="ghost" size="sm" onClick={resetFolderDraft}>
+                    Cancel
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  disabled={
+                    !folderDraft.name.trim() || folderSaveMutation.isPending
+                  }
+                  onClick={() => folderSaveMutation.mutate()}
+                >
+                  <FolderPlus className="mr-2 h-4 w-4" />
+                  {editingFolder ? "Save" : "Create folder"}
+                </Button>
+              </div>
+            </div>
+
+            <ScrollArea className="max-h-64">
+              <div className="space-y-2 pr-3">
+                {folders.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex items-center justify-between rounded-lg border p-2.5"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{f.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {f.templateCount} template
+                          {f.templateCount === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Rename"
+                        onClick={() => {
+                          setEditingFolder(f);
+                          setFolderDraft({
+                            name: f.name,
+                            description: f.description ?? "",
+                          });
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete"
+                        onClick={() => setPendingDeleteFolder(f)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {!folders.length && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    No folders yet.
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={!!pendingDeleteFolder}
+        onOpenChange={(o) => !o && setPendingDeleteFolder(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete folder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteFolder && pendingDeleteFolder.templateCount > 0
+                ? `"${pendingDeleteFolder.name}" has ${pendingDeleteFolder.templateCount} template(s) in it — move or delete them first.`
+                : `"${pendingDeleteFolder?.name}" will be removed.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                folderDeleteMutation.isPending ||
+                !!(pendingDeleteFolder && pendingDeleteFolder.templateCount > 0)
+              }
+              onClick={() =>
+                pendingDeleteFolder &&
+                folderDeleteMutation.mutate(pendingDeleteFolder.id)
               }
             >
               Delete

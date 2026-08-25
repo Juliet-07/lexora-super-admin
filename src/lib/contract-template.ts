@@ -34,6 +34,8 @@ export interface ContractTemplate {
   fileMimeType?: string;
   version: string;
   status: TemplateStatus;
+  // Null/undefined means uncategorized — sits outside any folder.
+  folderId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +59,7 @@ export const emptyTemplate: TemplateInput = {
   description: "",
   content: "",
   version: "1.0",
+  folderId: null,
 };
 
 const unwrap = (res: any) =>
@@ -80,6 +83,7 @@ function normalize(raw: any): ContractTemplate {
     fileMimeType: raw.fileMimeType || undefined,
     version: raw.version,
     status: raw.status,
+    folderId: raw.folderId ? String(raw.folderId) : null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -136,6 +140,7 @@ export interface UploadTemplateMeta {
   jurisdiction?: string;
   description?: string;
   version?: string;
+  folderId?: string | null;
 }
 
 export async function uploadTemplate(
@@ -149,6 +154,7 @@ export async function uploadTemplate(
   if (meta.jurisdiction) form.append("jurisdiction", meta.jurisdiction);
   if (meta.description) form.append("description", meta.description);
   if (meta.version) form.append("version", meta.version);
+  if (meta.folderId) form.append("folderId", meta.folderId);
   const res = await api.post("/super-admin/contract-templates/upload", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
@@ -167,4 +173,74 @@ export async function replaceTemplateFile(
     { headers: { "Content-Type": "multipart/form-data" } },
   );
   return normalize(unwrap(res));
+}
+
+// Works for either source type — folder placement doesn't touch a
+// template's content, so this is available even for uploaded
+// templates that update() itself refuses to edit.
+export async function setTemplateFolder(
+  id: string,
+  folderId: string | null,
+): Promise<ContractTemplate> {
+  const res = await api.patch(`/super-admin/contract-templates/${id}/folder`, {
+    folderId: folderId ?? "",
+  });
+  return normalize(unwrap(res));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Folders — organize the template library for browsing. Not
+// tenant-scoped, same as templates themselves: one real folder
+// structure, shown identically to every tenant.
+// ─────────────────────────────────────────────────────────────
+
+export interface TemplateFolder {
+  id: string;
+  name: string;
+  description?: string;
+  templateCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function normalizeFolder(raw: any): TemplateFolder {
+  return {
+    id: raw._id ?? raw.id,
+    name: raw.name,
+    description: raw.description || undefined,
+    templateCount: raw.templateCount ?? 0,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+export async function fetchFolders(): Promise<TemplateFolder[]> {
+  const res = await api.get("/super-admin/contract-template-folders");
+  const d = unwrap(res);
+  return Array.isArray(d) ? d.map(normalizeFolder) : [];
+}
+
+export async function createFolder(input: {
+  name: string;
+  description?: string;
+}): Promise<TemplateFolder> {
+  const res = await api.post("/super-admin/contract-template-folders", input);
+  return normalizeFolder(unwrap(res));
+}
+
+export async function updateFolder(
+  id: string,
+  input: { name: string; description?: string },
+): Promise<TemplateFolder> {
+  const res = await api.patch(
+    `/super-admin/contract-template-folders/${id}`,
+    input,
+  );
+  return normalizeFolder(unwrap(res));
+}
+
+// Backend refuses this if the folder still has templates in it —
+// the error surfaces through the caller's own error handling.
+export async function deleteFolder(id: string): Promise<void> {
+  await api.delete(`/super-admin/contract-template-folders/${id}`);
 }
