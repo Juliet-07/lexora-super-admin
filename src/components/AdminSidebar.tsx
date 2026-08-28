@@ -35,7 +35,7 @@ const mainItems = [
   { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Tenants", url: "/tenants", icon: Building2 },
   { title: "Knowledge Library", url: "/knowledge", icon: BookOpen },
-  { title: "Contract Templates", url: "/contract-templates", icon: FileText },
+  { title: "Templates", url: "/contract-templates", icon: FileText },
 ];
 
 const systemItems = [
