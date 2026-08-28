@@ -79,6 +79,10 @@ import {
   type Category,
   type TemplateStatus,
   type TemplateFolder,
+  TEMPLATE_MODULES,
+  getModule,
+  moduleLabel,
+  areaLabel,
 } from "@/lib/contract-template";
 
 const WORD_ACCEPT =
@@ -116,6 +120,9 @@ export default function ContractTemplates() {
   const [status, setStatus] = useState("all");
   // "all" | "uncategorized" | a real folder id
   const [selectedFolder, setSelectedFolder] = useState("all");
+  // Module scoping — templates exist per platform module (CRM, HR, GRC…)
+  const [selectedModule, setSelectedModule] = useState("all");
+  const [selectedArea, setSelectedArea] = useState("all");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -128,6 +135,14 @@ export default function ContractTemplates() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return templates
+      .filter((t) =>
+        selectedModule === "all" ? true : t.moduleKey === selectedModule,
+      )
+      .filter((t) =>
+        selectedArea === "all" || selectedModule === "all"
+          ? true
+          : (t.areaKey ?? "") === selectedArea,
+      )
       .filter((t) => (category === "all" ? true : t.category === category))
       .filter((t) => (status === "all" ? true : t.status === status))
       .filter((t) => {
@@ -143,9 +158,27 @@ export default function ContractTemplates() {
           : true,
       )
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }, [templates, search, category, status, selectedFolder]);
+  }, [
+    templates,
+    search,
+    category,
+    status,
+    selectedFolder,
+    selectedModule,
+    selectedArea,
+  ]);
 
-  const published = templates.filter((t) => t.status === "Published").length;
+  const moduleScoped = useMemo(
+    () =>
+      selectedModule === "all"
+        ? templates
+        : templates.filter((t) => t.moduleKey === selectedModule),
+    [templates, selectedModule],
+  );
+  const published = moduleScoped.filter(
+    (t) => t.status === "Published",
+  ).length;
+  const activeModule = getModule(selectedModule);
 
   const openCreate = () => {
     setEditingId(null);
@@ -395,9 +428,13 @@ export default function ContractTemplates() {
             <FileText className="h-5 w-5 text-primary" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {templates.length}
+                {moduleScoped.length}
               </p>
-              <p className="text-xs text-muted-foreground">Total templates</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedModule === "all"
+                  ? "Total templates"
+                  : `${moduleLabel(selectedModule)} templates`}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -417,7 +454,7 @@ export default function ContractTemplates() {
             <Pencil className="h-5 w-5 text-primary" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {templates.length - published}
+                {moduleScoped.length - published}
               </p>
               <p className="text-xs text-muted-foreground">Drafts</p>
             </div>
@@ -450,19 +487,19 @@ export default function ContractTemplates() {
                 {
                   id: "all",
                   name: "All templates",
-                  count: templates.length,
+                  count: moduleScoped.length,
                   icon: FileText,
                 },
                 {
                   id: "uncategorized",
                   name: "Uncategorized",
-                  count: templates.filter((t) => !t.folderId).length,
+                  count: moduleScoped.filter((t) => !t.folderId).length,
                   icon: Folder,
                 },
                 ...folders.map((f) => ({
                   id: f.id,
                   name: f.name,
-                  count: f.templateCount,
+                  count: moduleScoped.filter((t) => t.folderId === f.id).length,
                   icon: Folder,
                 })),
               ].map((item) => {
