@@ -217,6 +217,8 @@ export async function deleteTemplate(id: string): Promise<void> {
 export interface UploadTemplateMeta {
   title: string;
   category: Category;
+  moduleKey: string;
+  areaKey?: string | null;
   jurisdiction?: string;
   description?: string;
   version?: string;
@@ -231,6 +233,8 @@ export async function uploadTemplate(
   form.append("file", file);
   form.append("title", meta.title);
   form.append("category", meta.category);
+  form.append("moduleKey", meta.moduleKey);
+  if (meta.areaKey) form.append("areaKey", meta.areaKey);
   if (meta.jurisdiction) form.append("jurisdiction", meta.jurisdiction);
   if (meta.description) form.append("description", meta.description);
   if (meta.version) form.append("version", meta.version);
