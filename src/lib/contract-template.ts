@@ -100,7 +100,6 @@ export interface ContractTemplate {
   updatedAt: string;
 }
 
-
 export type TemplateInput = Omit<
   ContractTemplate,
   | "id"
@@ -116,6 +115,8 @@ export type TemplateInput = Omit<
 export const emptyTemplate: TemplateInput = {
   title: "",
   category: "Employment",
+  moduleKey: "crm",
+  areaKey: "contracts",
   jurisdiction: "",
   description: "",
   content: "",
@@ -130,11 +131,28 @@ const unwrap = (res: any) =>
       ? res.data
       : (res.data?.data ?? res.data);
 
+// Dummy fallback while the API doesn't return module scoping yet:
+// place legacy records in a sensible module/area from their category.
+const FALLBACK_SCOPE: Record<string, { moduleKey: string; areaKey: string }> = {
+  Employment: { moduleKey: "hr", areaKey: "employment" },
+  Corporate: { moduleKey: "grc", areaKey: "compliance" },
+  Commercial: { moduleKey: "crm", areaKey: "contracts" },
+  Services: { moduleKey: "crm", areaKey: "contracts" },
+  Property: { moduleKey: "crm", areaKey: "contracts" },
+  NDA: { moduleKey: "crm", areaKey: "contracts" },
+};
+
 function normalize(raw: any): ContractTemplate {
+  const fallback = FALLBACK_SCOPE[raw.category] ?? {
+    moduleKey: "crm",
+    areaKey: "contracts",
+  };
   return {
     id: raw._id ?? raw.id,
     title: raw.title,
     category: raw.category,
+    moduleKey: raw.moduleKey || fallback.moduleKey,
+    areaKey: raw.areaKey || (raw.moduleKey ? null : fallback.areaKey),
     jurisdiction: raw.jurisdiction || undefined,
     description: raw.description,
     sourceType: raw.sourceType ?? "authored",
@@ -149,6 +167,7 @@ function normalize(raw: any): ContractTemplate {
     updatedAt: raw.updatedAt,
   };
 }
+
 
 export async function fetchTemplates(): Promise<ContractTemplate[]> {
   const res = await api.get("/super-admin/contract-templates");
