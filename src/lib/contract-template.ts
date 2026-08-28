@@ -17,6 +17,62 @@ export const CATEGORIES = [
   "Corporate",
 ] as const;
 
+// ─────────────────────────────────────────────────────────────
+// Templates are scoped per platform module (and, where a module
+// has them, per sub-area). Dummy taxonomy for now — the backend
+// simply round-trips moduleKey/areaKey when it supports them.
+// ─────────────────────────────────────────────────────────────
+export interface ModuleArea {
+  key: string;
+  name: string;
+}
+
+export interface TemplateModule {
+  key: string;
+  name: string;
+  description: string;
+  areas: ModuleArea[];
+}
+
+export const TEMPLATE_MODULES: TemplateModule[] = [
+  {
+    key: "crm",
+    name: "CRM",
+    description: "Client-facing matter and contract templates",
+    areas: [
+      { key: "adr-litigation", name: "ADR & Litigation" },
+      { key: "contracts", name: "Contracts" },
+    ],
+  },
+  {
+    key: "hr",
+    name: "HR",
+    description: "People, employment and workplace templates",
+    areas: [
+      { key: "employment", name: "Employment" },
+      { key: "policies", name: "Policies & Handbooks" },
+    ],
+  },
+  {
+    key: "grc",
+    name: "GRC",
+    description: "Governance, risk and compliance templates",
+    areas: [
+      { key: "compliance", name: "Compliance" },
+      { key: "risk", name: "Risk & Audit" },
+    ],
+  },
+];
+
+export const getModule = (key?: string | null) =>
+  TEMPLATE_MODULES.find((m) => m.key === key);
+
+export const moduleLabel = (key?: string | null) =>
+  getModule(key)?.name ?? "Unassigned";
+
+export const areaLabel = (moduleKey?: string | null, areaKey?: string | null) =>
+  getModule(moduleKey)?.areas.find((a) => a.key === areaKey)?.name ?? "—";
+
 export type Category = (typeof CATEGORIES)[number];
 export type TemplateStatus = "Draft" | "Published";
 export type SourceType = "authored" | "uploaded";
@@ -25,6 +81,10 @@ export interface ContractTemplate {
   id: string;
   title: string;
   category: Category;
+  /** Platform module this template belongs to, e.g. "crm" | "hr" | "grc". */
+  moduleKey: string;
+  /** Sub-area within the module, e.g. "adr-litigation". */
+  areaKey?: string | null;
   jurisdiction?: string;
   description: string;
   sourceType: SourceType;
@@ -55,6 +115,8 @@ export type TemplateInput = Omit<
 export const emptyTemplate: TemplateInput = {
   title: "",
   category: "Employment",
+  moduleKey: "crm",
+  areaKey: "contracts",
   jurisdiction: "",
   description: "",
   content: "",
@@ -69,11 +131,28 @@ const unwrap = (res: any) =>
       ? res.data
       : (res.data?.data ?? res.data);
 
+// Dummy fallback while the API doesn't return module scoping yet:
+// place legacy records in a sensible module/area from their category.
+const FALLBACK_SCOPE: Record<string, { moduleKey: string; areaKey: string }> = {
+  Employment: { moduleKey: "hr", areaKey: "employment" },
+  Corporate: { moduleKey: "grc", areaKey: "compliance" },
+  Commercial: { moduleKey: "crm", areaKey: "contracts" },
+  Services: { moduleKey: "crm", areaKey: "contracts" },
+  Property: { moduleKey: "crm", areaKey: "contracts" },
+  NDA: { moduleKey: "crm", areaKey: "contracts" },
+};
+
 function normalize(raw: any): ContractTemplate {
+  const fallback = FALLBACK_SCOPE[raw.category] ?? {
+    moduleKey: "crm",
+    areaKey: "contracts",
+  };
   return {
     id: raw._id ?? raw.id,
     title: raw.title,
     category: raw.category,
+    moduleKey: raw.moduleKey || fallback.moduleKey,
+    areaKey: raw.areaKey || (raw.moduleKey ? null : fallback.areaKey),
     jurisdiction: raw.jurisdiction || undefined,
     description: raw.description,
     sourceType: raw.sourceType ?? "authored",
@@ -88,6 +167,7 @@ function normalize(raw: any): ContractTemplate {
     updatedAt: raw.updatedAt,
   };
 }
+
 
 export async function fetchTemplates(): Promise<ContractTemplate[]> {
   const res = await api.get("/super-admin/contract-templates");
@@ -137,6 +217,8 @@ export async function deleteTemplate(id: string): Promise<void> {
 export interface UploadTemplateMeta {
   title: string;
   category: Category;
+  moduleKey: string;
+  areaKey?: string | null;
   jurisdiction?: string;
   description?: string;
   version?: string;
@@ -151,6 +233,8 @@ export async function uploadTemplate(
   form.append("file", file);
   form.append("title", meta.title);
   form.append("category", meta.category);
+  form.append("moduleKey", meta.moduleKey);
+  if (meta.areaKey) form.append("areaKey", meta.areaKey);
   if (meta.jurisdiction) form.append("jurisdiction", meta.jurisdiction);
   if (meta.description) form.append("description", meta.description);
   if (meta.version) form.append("version", meta.version);

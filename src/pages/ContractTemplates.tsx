@@ -79,6 +79,10 @@ import {
   type Category,
   type TemplateStatus,
   type TemplateFolder,
+  TEMPLATE_MODULES,
+  getModule,
+  moduleLabel,
+  areaLabel,
 } from "@/lib/contract-template";
 
 const WORD_ACCEPT =
@@ -116,6 +120,9 @@ export default function ContractTemplates() {
   const [status, setStatus] = useState("all");
   // "all" | "uncategorized" | a real folder id
   const [selectedFolder, setSelectedFolder] = useState("all");
+  // Module scoping — templates exist per platform module (CRM, HR, GRC…)
+  const [selectedModule, setSelectedModule] = useState("all");
+  const [selectedArea, setSelectedArea] = useState("all");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -128,6 +135,14 @@ export default function ContractTemplates() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return templates
+      .filter((t) =>
+        selectedModule === "all" ? true : t.moduleKey === selectedModule,
+      )
+      .filter((t) =>
+        selectedArea === "all" || selectedModule === "all"
+          ? true
+          : (t.areaKey ?? "") === selectedArea,
+      )
       .filter((t) => (category === "all" ? true : t.category === category))
       .filter((t) => (status === "all" ? true : t.status === status))
       .filter((t) => {
@@ -143,13 +158,39 @@ export default function ContractTemplates() {
           : true,
       )
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }, [templates, search, category, status, selectedFolder]);
+  }, [
+    templates,
+    search,
+    category,
+    status,
+    selectedFolder,
+    selectedModule,
+    selectedArea,
+  ]);
 
-  const published = templates.filter((t) => t.status === "Published").length;
+  const moduleScoped = useMemo(
+    () =>
+      selectedModule === "all"
+        ? templates
+        : templates.filter((t) => t.moduleKey === selectedModule),
+    [templates, selectedModule],
+  );
+  const published = moduleScoped.filter(
+    (t) => t.status === "Published",
+  ).length;
+  const activeModule = getModule(selectedModule);
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyTemplate);
+    const mod = selectedModule === "all" ? "crm" : selectedModule;
+    setForm({
+      ...emptyTemplate,
+      moduleKey: mod,
+      areaKey:
+        selectedArea !== "all"
+          ? selectedArea
+          : (getModule(mod)?.areas[0]?.key ?? null),
+    });
     setEditorOpen(true);
   };
 
@@ -158,6 +199,8 @@ export default function ContractTemplates() {
     setForm({
       title: t.title,
       category: t.category,
+      moduleKey: t.moduleKey,
+      areaKey: t.areaKey ?? null,
       jurisdiction: t.jurisdiction ?? "",
       description: t.description,
       content: t.content,
@@ -312,6 +355,8 @@ export default function ContractTemplates() {
   const [uploadMeta, setUploadMeta] = useState({
     title: "",
     category: "Employment" as Category,
+    moduleKey: "crm",
+    areaKey: "contracts" as string | null,
     jurisdiction: "",
     description: "",
     version: "1.0",
@@ -326,6 +371,12 @@ export default function ContractTemplates() {
     setUploadMeta({
       title: "",
       category: "Employment",
+      moduleKey: selectedModule === "all" ? "crm" : selectedModule,
+      areaKey:
+        selectedArea !== "all"
+          ? selectedArea
+          : (getModule(selectedModule === "all" ? "crm" : selectedModule)
+              ?.areas[0]?.key ?? null),
       jurisdiction: "",
       description: "",
       version: "1.0",
@@ -372,11 +423,11 @@ export default function ContractTemplates() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Contract Templates
+            Templates
           </h1>
           <p className="text-sm text-muted-foreground">
-            Publish reusable contract templates for tenants to use in their
-            workspaces.
+            Publish reusable templates per module — CRM, HR and GRC — for
+            tenants to use in their workspaces.
           </p>
         </div>
         <div className="flex gap-2">
@@ -389,15 +440,78 @@ export default function ContractTemplates() {
         </div>
       </div>
 
+      {/* Module scope */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {[{ key: "all", name: "All modules" }, ...TEMPLATE_MODULES].map(
+            (m) => {
+              const active = selectedModule === m.key;
+              return (
+                <button
+                  key={m.key}
+                  onClick={() => {
+                    setSelectedModule(m.key);
+                    setSelectedArea("all");
+                  }}
+                  className={cn(
+                    "rounded-full border px-4 py-1.5 text-sm transition-colors",
+                    active
+                      ? "border-primary bg-primary/15 font-medium text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {m.name}
+                  <span className="ml-2 text-xs opacity-70">
+                    {m.key === "all"
+                      ? templates.length
+                      : templates.filter((t) => t.moduleKey === m.key).length}
+                  </span>
+                </button>
+              );
+            },
+          )}
+        </div>
+        {activeModule && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {activeModule.description}:
+            </span>
+            {[{ key: "all", name: "All areas" }, ...activeModule.areas].map(
+              (a) => {
+                const active = selectedArea === a.key;
+                return (
+                  <button
+                    key={a.key}
+                    onClick={() => setSelectedArea(a.key)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs transition-colors",
+                      active
+                        ? "bg-primary/15 font-medium text-primary"
+                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                    )}
+                  >
+                    {a.name}
+                  </button>
+                );
+              },
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <FileText className="h-5 w-5 text-primary" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {templates.length}
+                {moduleScoped.length}
               </p>
-              <p className="text-xs text-muted-foreground">Total templates</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedModule === "all"
+                  ? "Total templates"
+                  : `${moduleLabel(selectedModule)} templates`}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -417,7 +531,7 @@ export default function ContractTemplates() {
             <Pencil className="h-5 w-5 text-primary" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {templates.length - published}
+                {moduleScoped.length - published}
               </p>
               <p className="text-xs text-muted-foreground">Drafts</p>
             </div>
@@ -450,19 +564,19 @@ export default function ContractTemplates() {
                 {
                   id: "all",
                   name: "All templates",
-                  count: templates.length,
+                  count: moduleScoped.length,
                   icon: FileText,
                 },
                 {
                   id: "uncategorized",
                   name: "Uncategorized",
-                  count: templates.filter((t) => !t.folderId).length,
+                  count: moduleScoped.filter((t) => !t.folderId).length,
                   icon: Folder,
                 },
                 ...folders.map((f) => ({
                   id: f.id,
                   name: f.name,
-                  count: f.templateCount,
+                  count: moduleScoped.filter((t) => t.folderId === f.id).length,
                   icon: Folder,
                 })),
               ].map((item) => {
@@ -551,6 +665,7 @@ export default function ContractTemplates() {
             <TableHeader>
               <TableRow>
                 <TableHead>Template</TableHead>
+                <TableHead>Module</TableHead>
                 <TableHead>Folder</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Jurisdiction</TableHead>
@@ -564,7 +679,7 @@ export default function ContractTemplates() {
               {isLoading && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     Loading templates…
@@ -574,7 +689,7 @@ export default function ContractTemplates() {
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     No templates match your filters.
@@ -595,6 +710,16 @@ export default function ContractTemplates() {
                     <p className="line-clamp-1 text-xs text-muted-foreground">
                       {t.description}
                     </p>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-0.5">
+                      <Badge variant="secondary" className="w-fit">
+                        {moduleLabel(t.moduleKey)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {areaLabel(t.moduleKey, t.areaKey)}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Select
@@ -720,7 +845,7 @@ export default function ContractTemplates() {
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>
-              {editingId ? "Edit template" : "New contract template"}
+              {editingId ? "Edit template" : "New template"}
             </DialogTitle>
             <DialogDescription>
               Published templates become available to every tenant.
@@ -739,6 +864,48 @@ export default function ContractTemplates() {
                     }
                     placeholder="e.g. Standard Employment Agreement"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Module</Label>
+                  <Select
+                    value={form.moduleKey}
+                    onValueChange={(v) =>
+                      setForm({
+                        ...form,
+                        moduleKey: v,
+                        areaKey: getModule(v)?.areas[0]?.key ?? null,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TEMPLATE_MODULES.map((m) => (
+                        <SelectItem key={m.key} value={m.key}>
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Area</Label>
+                  <Select
+                    value={form.areaKey ?? ""}
+                    onValueChange={(v) => setForm({ ...form, areaKey: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an area" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(getModule(form.moduleKey)?.areas ?? []).map((a) => (
+                        <SelectItem key={a.key} value={a.key}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Category</Label>
@@ -859,6 +1026,12 @@ export default function ContractTemplates() {
               <article className="space-y-5">
                 <header className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">
+                      {moduleLabel(preview.moduleKey)}
+                      {preview.areaKey
+                        ? ` · ${areaLabel(preview.moduleKey, preview.areaKey)}`
+                        : ""}
+                    </Badge>
                     <Badge variant="outline">{preview.category}</Badge>
                     {preview.jurisdiction && (
                       <Badge variant="secondary">{preview.jurisdiction}</Badge>
@@ -936,6 +1109,50 @@ export default function ContractTemplates() {
                   }
                   placeholder="e.g. Standard Employment Agreement"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Module</Label>
+                <Select
+                  value={uploadMeta.moduleKey}
+                  onValueChange={(v) =>
+                    setUploadMeta({
+                      ...uploadMeta,
+                      moduleKey: v,
+                      areaKey: getModule(v)?.areas[0]?.key ?? null,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEMPLATE_MODULES.map((m) => (
+                      <SelectItem key={m.key} value={m.key}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Area</Label>
+                <Select
+                  value={uploadMeta.areaKey ?? ""}
+                  onValueChange={(v) =>
+                    setUploadMeta({ ...uploadMeta, areaKey: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an area" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(getModule(uploadMeta.moduleKey)?.areas ?? []).map((a) => (
+                      <SelectItem key={a.key} value={a.key}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Category</Label>
