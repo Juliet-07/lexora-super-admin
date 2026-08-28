@@ -17,6 +17,62 @@ export const CATEGORIES = [
   "Corporate",
 ] as const;
 
+// ─────────────────────────────────────────────────────────────
+// Templates are scoped per platform module (and, where a module
+// has them, per sub-area). Dummy taxonomy for now — the backend
+// simply round-trips moduleKey/areaKey when it supports them.
+// ─────────────────────────────────────────────────────────────
+export interface ModuleArea {
+  key: string;
+  name: string;
+}
+
+export interface TemplateModule {
+  key: string;
+  name: string;
+  description: string;
+  areas: ModuleArea[];
+}
+
+export const TEMPLATE_MODULES: TemplateModule[] = [
+  {
+    key: "crm",
+    name: "CRM",
+    description: "Client-facing matter and contract templates",
+    areas: [
+      { key: "adr-litigation", name: "ADR & Litigation" },
+      { key: "contracts", name: "Contracts" },
+    ],
+  },
+  {
+    key: "hr",
+    name: "HR",
+    description: "People, employment and workplace templates",
+    areas: [
+      { key: "employment", name: "Employment" },
+      { key: "policies", name: "Policies & Handbooks" },
+    ],
+  },
+  {
+    key: "grc",
+    name: "GRC",
+    description: "Governance, risk and compliance templates",
+    areas: [
+      { key: "compliance", name: "Compliance" },
+      { key: "risk", name: "Risk & Audit" },
+    ],
+  },
+];
+
+export const getModule = (key?: string | null) =>
+  TEMPLATE_MODULES.find((m) => m.key === key);
+
+export const moduleLabel = (key?: string | null) =>
+  getModule(key)?.name ?? "Unassigned";
+
+export const areaLabel = (moduleKey?: string | null, areaKey?: string | null) =>
+  getModule(moduleKey)?.areas.find((a) => a.key === areaKey)?.name ?? "—";
+
 export type Category = (typeof CATEGORIES)[number];
 export type TemplateStatus = "Draft" | "Published";
 export type SourceType = "authored" | "uploaded";
@@ -25,6 +81,10 @@ export interface ContractTemplate {
   id: string;
   title: string;
   category: Category;
+  /** Platform module this template belongs to, e.g. "crm" | "hr" | "grc". */
+  moduleKey: string;
+  /** Sub-area within the module, e.g. "adr-litigation". */
+  areaKey?: string | null;
   jurisdiction?: string;
   description: string;
   sourceType: SourceType;
@@ -39,6 +99,7 @@ export interface ContractTemplate {
   createdAt: string;
   updatedAt: string;
 }
+
 
 export type TemplateInput = Omit<
   ContractTemplate,
