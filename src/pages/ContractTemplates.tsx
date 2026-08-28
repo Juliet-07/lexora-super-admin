@@ -58,6 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { RichTextEditor, RichTextView } from "@/components/RichTextEditor";
 import {
   CATEGORIES,
@@ -424,56 +425,93 @@ export default function ContractTemplates() {
         </Card>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant={selectedFolder === "all" ? "default" : "outline"}
-          onClick={() => setSelectedFolder("all")}
-        >
-          All templates
-          <Badge variant="secondary" className="ml-2">
-            {templates.length}
-          </Badge>
-        </Button>
-        <Button
-          size="sm"
-          variant={selectedFolder === "uncategorized" ? "default" : "outline"}
-          onClick={() => setSelectedFolder("uncategorized")}
-        >
-          Uncategorized
-          <Badge variant="secondary" className="ml-2">
-            {templates.filter((t) => !t.folderId).length}
-          </Badge>
-        </Button>
-        {folders.map((f) => (
-          <Button
-            key={f.id}
-            size="sm"
-            variant={selectedFolder === f.id ? "default" : "outline"}
-            onClick={() => setSelectedFolder(f.id)}
-          >
-            <Folder className="mr-1.5 h-3.5 w-3.5" />
-            {f.name}
-            <Badge variant="secondary" className="ml-2">
-              {f.templateCount}
-            </Badge>
-          </Button>
-        ))}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-muted-foreground"
-          onClick={() => {
-            resetFolderDraft();
-            setFolderManagerOpen(true);
-          }}
-        >
-          <Settings2 className="mr-1.5 h-3.5 w-3.5" /> Manage folders
-        </Button>
-      </div>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        {/* Folder list */}
+        <Card className="w-full shrink-0 lg:w-72">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between px-2 pb-2 pt-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Folders
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={() => {
+                  resetFolderDraft();
+                  setFolderManagerOpen(true);
+                }}
+              >
+                <Settings2 className="mr-1.5 h-3.5 w-3.5" /> Manage
+              </Button>
+            </div>
+            <nav className="space-y-0.5">
+              {[
+                {
+                  id: "all",
+                  name: "All templates",
+                  count: templates.length,
+                  icon: FileText,
+                },
+                {
+                  id: "uncategorized",
+                  name: "Uncategorized",
+                  count: templates.filter((t) => !t.folderId).length,
+                  icon: Folder,
+                },
+                ...folders.map((f) => ({
+                  id: f.id,
+                  name: f.name,
+                  count: f.templateCount,
+                  icon: Folder,
+                })),
+              ].map((item) => {
+                const active = selectedFolder === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedFolder(item.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                      active
+                        ? "bg-primary/15 font-medium text-primary"
+                        : "text-foreground/80 hover:bg-muted/60 hover:text-foreground",
+                    )}
+                  >
+                    <item.icon
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        active ? "text-primary" : "text-muted-foreground",
+                      )}
+                    />
+                    <span className="flex-1 truncate text-left">
+                      {item.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-xs",
+                        active
+                          ? "bg-primary/20 text-primary"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {item.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+            {folders.length === 0 && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                No folders yet — create one from Manage.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardContent className="space-y-4 p-4">
+        {/* Templates table */}
+        <Card className="min-w-0 flex-1">
+          <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap gap-3">
             <div className="relative min-w-[220px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -674,8 +712,9 @@ export default function ContractTemplates() {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="max-w-4xl">
