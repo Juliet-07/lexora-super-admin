@@ -91,10 +91,15 @@ type CreateTenantPayload = {
 };
 type ChangePlanPayload = {
   plan: string;
-  addonModules: string[];
   endsAt: string;
   maxUsersOverride: number;
-  maxClientsOverride: number;
+  // Real payment recorded alongside the plan change — omitted (0)
+  // when nothing was actually paid, e.g. Free, or Premium before
+  // its separately-quoted invoice is settled.
+  paymentAmount: number;
+  paymentCurrency: "USD" | "RWF";
+  paymentReference: string;
+  paymentNotes: string;
 };
 type RecordPaymentPayload = {
   tenantId: string;
@@ -127,7 +132,6 @@ type PaginatedResponse = {
 };
 
 // ─── Constants ────────────────────────────────────────────────
-const PLAN_OPTIONS = ["free", "starter", "professional", "enterprise"];
 const INDUSTRY_OPTIONS = [
   "Financial Services",
   "Legal",
@@ -170,10 +174,12 @@ const defaultPayload: CreateTenantPayload = {
 };
 const defaultPlanPayload: ChangePlanPayload = {
   plan: "free",
-  addonModules: [],
   endsAt: "",
   maxUsersOverride: 0,
-  maxClientsOverride: 0,
+  paymentAmount: 0,
+  paymentCurrency: "USD",
+  paymentReference: "",
+  paymentNotes: "",
 };
 
 // ─── Component ────────────────────────────────────────────────
@@ -206,7 +212,6 @@ export default function Tenants() {
   const [planTarget, setPlanTarget] = useState<Tenant | null>(null);
   const [planForm, setPlanForm] =
     useState<ChangePlanPayload>(defaultPlanPayload);
-  const [addonInput, setAddonInput] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
 
   useEffect(() => {
@@ -228,6 +233,18 @@ export default function Tenants() {
   const tenants: Tenant[] = data?.items ?? [];
   const totalPages = data?.totalPages ?? 1;
   const total = data?.total ?? 0;
+
+  // ── Fetch real, active subscription plans — never hardcode this
+  // list, since plans are created/renamed/retired by the super
+  // admin at any time on the Subscriptions page.
+  const { data: plans = [] } = useQuery<{ plan: string; name: string }[]>({
+    queryKey: ["plans"],
+    queryFn: async () => {
+      const res = await api.get("/super-admin/plans");
+      return Array.isArray(res.data?.data) ? res.data.data : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   // ── Create Tenant ─────────────────────────────────────────
   const createMutation = useMutation({
@@ -347,26 +364,15 @@ export default function Tenants() {
     setPlanTarget(tenant);
     setPlanForm({
       plan: tenant.subscription?.plan ?? "free",
-      addonModules: tenant.subscription?.activeModules ?? [],
       endsAt: "",
       maxUsersOverride: 0,
-      maxClientsOverride: 0,
+      paymentAmount: 0,
+      paymentCurrency: "USD",
+      paymentReference: "",
+      paymentNotes: "",
     });
     setPlanOpen(true);
   };
-
-  const addAddon = () => {
-    const v = addonInput.trim().toLowerCase();
-    if (!v || planForm.addonModules.includes(v)) return;
-    setPlanForm((p) => ({ ...p, addonModules: [...p.addonModules, v] }));
-    setAddonInput("");
-  };
-
-  const removeAddon = (mod: string) =>
-    setPlanForm((p) => ({
-      ...p,
-      addonModules: p.addonModules.filter((m) => m !== mod),
-    }));
 
   // ─────────────────────────────────────────────────────────
   return (
@@ -470,9 +476,13 @@ export default function Tenants() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {PLAN_OPTIONS.map((p) => (
-                        <SelectItem key={p} value={p} className="capitalize">
-                          {p}
+                      {plans.map((p) => (
+                        <SelectItem
+                          key={p.plan}
+                          value={p.plan}
+                          className="capitalize"
+                        >
+                          {p.name || p.plan}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1138,9 +1148,13 @@ export default function Tenants() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PLAN_OPTIONS.map((p) => (
-                    <SelectItem key={p} value={p} className="capitalize">
-                      {p}
+                  {plans.map((p) => (
+                    <SelectItem
+                      key={p.plan}
+                      value={p.plan}
+                      className="capitalize"
+                    >
+                      {p.name || p.plan}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1157,69 +1171,93 @@ export default function Tenants() {
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Max Users Override</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="mt-1.5"
-                  value={planForm.maxUsersOverride}
-                  onChange={(e) =>
-                    setPlanForm((p) => ({
-                      ...p,
-                      maxUsersOverride: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>Max Clients Override</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="mt-1.5"
-                  value={planForm.maxClientsOverride}
-                  onChange={(e) =>
-                    setPlanForm((p) => ({
-                      ...p,
-                      maxClientsOverride: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-            </div>
             <div>
-              <Label>Addon Modules</Label>
-              <div className="flex gap-2 mt-1.5">
-                <Input
-                  placeholder="e.g. kyc_aml"
-                  value={addonInput}
-                  onChange={(e) => setAddonInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addAddon()}
-                />
-                <Button variant="outline" onClick={addAddon}>
-                  Add
-                </Button>
-              </div>
-              {planForm.addonModules.length > 0 && (
-                <div className="flex gap-1.5 flex-wrap mt-2">
-                  {planForm.addonModules.map((m) => (
-                    <span
-                      key={m}
-                      className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full"
-                    >
-                      {m}
-                      <button
-                        onClick={() => removeAddon(m)}
-                        className="hover:text-destructive ml-0.5"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
+              <Label>Max Users Override</Label>
+              <Input
+                type="number"
+                min={0}
+                className="mt-1.5"
+                value={planForm.maxUsersOverride}
+                onChange={(e) =>
+                  setPlanForm((p) => ({
+                    ...p,
+                    maxUsersOverride: Number(e.target.value),
+                  }))
+                }
+              />
+            </div>
+
+            <div className="border-t pt-4 space-y-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                Record payment (optional)
+              </p>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Leave the amount at 0 if nothing was paid yet — e.g. Free, or
+                Premium before its separately-quoted invoice is settled. A real
+                transaction is only created when an amount is entered.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Amount Paid</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    className="mt-1.5"
+                    value={planForm.paymentAmount}
+                    onChange={(e) =>
+                      setPlanForm((p) => ({
+                        ...p,
+                        paymentAmount: Number(e.target.value),
+                      }))
+                    }
+                  />
                 </div>
-              )}
+                <div>
+                  <Label>Currency</Label>
+                  <Select
+                    value={planForm.paymentCurrency}
+                    onValueChange={(v) =>
+                      setPlanForm((p) => ({
+                        ...p,
+                        paymentCurrency: v as "USD" | "RWF",
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="RWF">RWF</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label>Payment Reference</Label>
+                <Input
+                  className="mt-1.5"
+                  placeholder="e.g. bank transfer ref, receipt number"
+                  value={planForm.paymentReference}
+                  onChange={(e) =>
+                    setPlanForm((p) => ({
+                      ...p,
+                      paymentReference: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Notes</Label>
+                <Input
+                  className="mt-1.5"
+                  placeholder="Optional"
+                  value={planForm.paymentNotes}
+                  onChange={(e) =>
+                    setPlanForm((p) => ({ ...p, paymentNotes: e.target.value }))
+                  }
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

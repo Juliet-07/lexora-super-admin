@@ -12,6 +12,11 @@ import {
   Gauge,
   ToggleLeft,
   Info,
+  Search,
+  Check,
+  X,
+  Package,
+  Building2,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -45,8 +50,6 @@ type PlatformModule = {
   name: string;
   description?: string;
   isActive: boolean;
-  includedInPlans: string[];
-  addonPriceMonthly?: number;
 };
 
 type RiskRules = {
@@ -101,6 +104,10 @@ export default function SystemSettings() {
   });
   const [riskDirty, setRiskDirty] = useState(false);
 
+  // ── Per-tenant module access ──────────────────────────────
+  const [tenantSearch, setTenantSearch] = useState("");
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+
   // ── Queries — React Query, no useEffect ──────────────────
 
   const { data: profile, isLoading: profileLoading } = useQuery<ProfileData>({
@@ -150,6 +157,48 @@ export default function SystemSettings() {
     staleTime: 60_000,
   });
 
+  // Real tenant search — only runs once the admin has typed
+  // something, matching the same /super-admin/tenants list every
+  // other page uses.
+  const { data: tenantResults = [], isFetching: tenantSearchLoading } =
+    useQuery<
+      {
+        _id: string;
+        firstName: string;
+        lastName: string;
+        email: string;
+        tenantProfile?: { businessName?: string };
+      }[]
+    >({
+      queryKey: ["tenant-search-for-modules", tenantSearch],
+      queryFn: async () => {
+        const res = await api.get("/super-admin/tenants", {
+          params: { search: tenantSearch, limit: 10 },
+        });
+        const data = res.data?.data ?? res.data;
+        return data?.items ?? [];
+      },
+      enabled: tenantSearch.trim().length > 1,
+      staleTime: 30_000,
+    });
+
+  // Real, full detail for whichever tenant is selected — this is
+  // where their actual per-tenant activeModules live.
+  const { data: selectedTenant, isLoading: selectedTenantLoading } = useQuery<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+    tenantProfile?: { businessName?: string };
+    subscription?: { activeModules: string[] };
+  }>({
+    queryKey: ["tenant-for-modules", selectedTenantId],
+    queryFn: async () => {
+      const res = await api.get(`/super-admin/tenants/${selectedTenantId}`);
+      return res.data?.data ?? res.data;
+    },
+    enabled: !!selectedTenantId,
+  });
+
   // ── Risk rules — single query, derive edit form from it ───
   const { data: savedRiskRules, isLoading: riskLoading } = useQuery<RiskRules>({
     queryKey: ["risk-rules"],
@@ -194,7 +243,7 @@ export default function SystemSettings() {
       queryClient.invalidateQueries({ queryKey: ["platform-modules"] });
       toast({
         title: `Module ${isActive ? "enabled" : "disabled"}`,
-        description: `Module has been ${isActive ? "activated" : "deactivated"} across all subscriptions.`,
+        description: `Module has been ${isActive ? "activated" : "deactivated"} platform-wide, for every tenant.`,
       });
     },
     onError: (err: any) => {
@@ -205,6 +254,29 @@ export default function SystemSettings() {
         variant: "destructive",
       });
     },
+  });
+
+  // Real, independent per-tenant switch — every plan grants every
+  // module, so this is the actual, day-to-day control: turn one
+  // module off for one specific tenant without touching any other
+  // tenant or the plan itself.
+  const tenantModuleMutation = useMutation({
+    mutationFn: ({ key, enabled }: { key: string; enabled: boolean }) =>
+      api.patch(
+        `/super-admin/tenants/${selectedTenantId}/subscription/modules/${key}`,
+        { enabled },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-for-modules", selectedTenantId],
+      });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Failed to update module access",
+        description: err?.response?.data?.message ?? "Please try again.",
+        variant: "destructive",
+      }),
   });
 
   const saveRiskMutation = useMutation({
@@ -265,6 +337,12 @@ export default function SystemSettings() {
   const initials = profile
     ? `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase()
     : "SA";
+
+  const tenantDisplayName = (t: {
+    firstName: string;
+    lastName: string;
+    tenantProfile?: { businessName?: string };
+  }) => t.tenantProfile?.businessName ?? `${t.firstName} ${t.lastName}`;
 
   // ─────────────────────────────────────────────────────────
   return (
@@ -458,8 +536,11 @@ export default function SystemSettings() {
             <div>
               <h2 className="text-base font-semibold">Platform Modules</h2>
               <p className="text-sm text-muted-foreground">
-                Toggle modules on or off globally. Disabling removes access from
-                all tenant subscriptions immediately.
+                Retire or restore a module for the entire platform — e.g. it
+                isn't ready to launch, or is being sunset. Every plan includes
+                every active module by default; to turn a module off for one
+                specific tenant instead, use "Per-Tenant Module Access" below,
+                or that tenant's own detail page.
               </p>
             </div>
             {!modulesLoading && (
@@ -522,11 +603,6 @@ export default function SystemSettings() {
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
                           Key: <code className="font-mono">{mod.key}</code>
-                          {mod.includedInPlans?.length > 0 && (
-                            <span className="ml-3">
-                              Plans: {mod.includedInPlans.join(", ")}
-                            </span>
-                          )}
                         </p>
                       </div>
                     </div>
@@ -554,10 +630,148 @@ export default function SystemSettings() {
           <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm">
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="text-amber-800">
-              <strong>Important:</strong> Disabling a module removes it from all
-              active tenant subscriptions immediately.
+              <strong>Important:</strong> Disabling a module here removes it
+              from every tenant on the platform, regardless of their plan or any
+              per-tenant access setting. For a single tenant, use "Per-Tenant
+              Module Access" below instead.
             </div>
           </div>
+
+          <Separator />
+
+          {/* ── Per-Tenant Module Access — the real, day-to-day
+              control most super admins actually need: every plan
+              grants every module, so this is how a specific tenant
+              gets one switched off without touching anyone else. ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">
+                Per-Tenant Module Access
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Search for a tenant and switch specific modules on or off for
+                them alone — independent of their plan and every other tenant.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!selectedTenantId ? (
+                <>
+                  <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search tenant by name or email…"
+                      className="pl-9"
+                      value={tenantSearch}
+                      onChange={(e) => setTenantSearch(e.target.value)}
+                    />
+                  </div>
+                  {tenantSearch.trim().length > 1 && (
+                    <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                      {tenantSearchLoading ? (
+                        <div className="p-4 flex items-center justify-center text-muted-foreground text-sm gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                          Searching…
+                        </div>
+                      ) : tenantResults.length === 0 ? (
+                        <p className="p-4 text-sm text-muted-foreground">
+                          No tenants match "{tenantSearch}".
+                        </p>
+                      ) : (
+                        tenantResults.map((t) => (
+                          <button
+                            key={t._id}
+                            onClick={() => {
+                              setSelectedTenantId(t._id);
+                              setTenantSearch("");
+                            }}
+                            className="w-full text-left p-3 flex items-center gap-3 hover:bg-muted/40 transition-colors"
+                          >
+                            <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">
+                                {tenantDisplayName(t)}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {t.email}
+                              </p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : selectedTenantLoading || !selectedTenant ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading tenant…
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className="text-sm">
+                      Editing module access for{" "}
+                      <strong>{tenantDisplayName(selectedTenant)}</strong>
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedTenantId(null)}
+                    >
+                      Change tenant
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {modules
+                      .filter((m) => m.isActive)
+                      .map((m) => {
+                        const enabled =
+                          selectedTenant.subscription?.activeModules?.includes(
+                            m.key,
+                          );
+                        const isToggling =
+                          tenantModuleMutation.isPending &&
+                          (tenantModuleMutation.variables as any)?.key ===
+                            m.key;
+                        return (
+                          <button
+                            key={m.key}
+                            disabled={isToggling}
+                            onClick={() =>
+                              tenantModuleMutation.mutate({
+                                key: m.key,
+                                enabled: !enabled,
+                              })
+                            }
+                            className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full font-medium transition-colors ${
+                              enabled
+                                ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                : "bg-muted text-muted-foreground hover:bg-muted/70"
+                            }`}
+                          >
+                            <Package className="h-3 w-3" />
+                            {m.name}
+                            {isToggling ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : enabled ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <X className="h-3 w-3" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    {modules.filter((m) => m.isActive).length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No active platform modules to assign.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ══════════════════════ RISK RULES ══════════════════════ */}

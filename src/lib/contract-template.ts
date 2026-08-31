@@ -168,7 +168,6 @@ function normalize(raw: any): ContractTemplate {
   };
 }
 
-
 export async function fetchTemplates(): Promise<ContractTemplate[]> {
   const res = await api.get("/super-admin/contract-templates");
   const d = unwrap(res);
@@ -215,7 +214,7 @@ export async function deleteTemplate(id: string): Promise<void> {
 // same way an authored template is. Only Word documents are
 // accepted — no PDF.
 export interface UploadTemplateMeta {
-  title: string;
+  title?: string;
   category: Category;
   moduleKey: string;
   areaKey?: string | null;
@@ -226,12 +225,15 @@ export interface UploadTemplateMeta {
 }
 
 export async function uploadTemplate(
-  file: File,
+  files: File[],
   meta: UploadTemplateMeta,
-): Promise<ContractTemplate> {
+): Promise<ContractTemplate[]> {
   const form = new FormData();
-  form.append("file", file);
-  form.append("title", meta.title);
+  files.forEach((f) => form.append("files", f));
+  // Title only makes sense for a single file — with several, the
+  // backend uses each real filename as that template's title
+  // instead, since one shared title can't apply to multiple.
+  if (files.length === 1 && meta.title) form.append("title", meta.title);
   form.append("category", meta.category);
   form.append("moduleKey", meta.moduleKey);
   if (meta.areaKey) form.append("areaKey", meta.areaKey);
@@ -242,7 +244,9 @@ export async function uploadTemplate(
   const res = await api.post("/super-admin/contract-templates/upload", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
-  return normalize(unwrap(res));
+  const data = unwrap(res);
+  const list = Array.isArray(data) ? data : [data];
+  return list.map(normalize);
 }
 
 export async function replaceTemplateFile(

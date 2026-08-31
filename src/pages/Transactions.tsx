@@ -357,9 +357,10 @@ export default function Transactions() {
           <SelectContent>
             <SelectItem value="all">All plans</SelectItem>
             <SelectItem value="free">Free</SelectItem>
-            <SelectItem value="starter">Starter</SelectItem>
-            <SelectItem value="professional">Professional</SelectItem>
+            <SelectItem value="lite">Lite</SelectItem>
+            <SelectItem value="grow">Grow</SelectItem>
             <SelectItem value="enterprise">Enterprise</SelectItem>
+            <SelectItem value="premium">Premium</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -26,9 +26,10 @@ import { Badge } from "@/components/ui/badge";
 
 const PLAN_COLORS: Record<string, string> = {
   free: "hsl(210, 80%, 55%)",
-  starter: "hsl(245, 58%, 58%)",
-  professional: "hsl(260, 55%, 55%)",
+  lite: "hsl(245, 58%, 58%)",
+  grow: "hsl(260, 55%, 55%)",
   enterprise: "hsl(225, 60%, 48%)",
+  premium: "hsl(280, 65%, 50%)",
 };
 
 type Overview = {

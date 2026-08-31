@@ -53,7 +53,6 @@ import {
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { PlanSelect } from "@/components/Dropdowns/PlanSelect";
 
 // ─── Types ────────────────────────────────────────────────────
 type ApiModule = {
@@ -61,9 +60,6 @@ type ApiModule = {
   key: string;
   name: string;
   description: string;
-  includedInPlans: string[];
-  isAvailableAsAddon: boolean;
-  addonPriceMonthly: number;
   isActive: boolean;
   iconUrl: string | null;
   createdAt: string;
@@ -74,9 +70,6 @@ type CreateModulePayload = {
   key: string;
   name: string;
   description: string;
-  includedInPlans: string[];
-  isAvailableAsAddon: boolean;
-  addonPriceMonthly: number;
 };
 
 type UpdateModulePayload = Omit<CreateModulePayload, "key">;
@@ -101,12 +94,9 @@ const blankCreate: CreateModulePayload = {
   key: "",
   name: "",
   description: "",
-  includedInPlans: [],
-  isAvailableAsAddon: false,
-  addonPriceMonthly: 0,
 };
 
-const KEYS = ["crm", "grc", "hr_pm", "kyc_aml"];
+const KEYS = ["crm", "grc", "hr_pm", "kyc_aml", "finance"];
 
 // ── Shared form fields (used in both create and edit) ─────
 const ModuleFormFields = ({
@@ -180,40 +170,6 @@ const ModuleFormFields = ({
         onChange={(e) => setForm({ ...form, description: e.target.value })}
       />
     </div>
-
-    <div>
-      <Label>Included in Plans</Label>
-      <div className="mt-1.5">
-        <PlanSelect
-          multi
-          value={form.includedInPlans}
-          onChange={(keys) => setForm({ ...form, includedInPlans: keys })}
-          hint="Select which subscription plans include this module by default."
-        />
-      </div>
-    </div>
-
-    <div className="grid grid-cols-2 gap-4 items-end hidden">
-      <div>
-        <Label>Addon Price / month ($)</Label>
-        <Input
-          type="number"
-          min={0}
-          className="mt-1.5"
-          value={form.addonPriceMonthly}
-          onChange={(e) =>
-            setForm({ ...form, addonPriceMonthly: Number(e.target.value) })
-          }
-        />
-      </div>
-      <div className="flex items-center gap-3 pb-0.5">
-        <Switch
-          checked={form.isAvailableAsAddon}
-          onCheckedChange={(v) => setForm({ ...form, isAvailableAsAddon: v })}
-        />
-        <Label className="cursor-pointer">Available as addon</Label>
-      </div>
-    </div>
   </div>
 );
 
@@ -233,9 +189,6 @@ export default function Modules() {
   const [editForm, setEditForm] = useState<UpdateModulePayload>({
     name: "",
     description: "",
-    includedInPlans: [],
-    isAvailableAsAddon: false,
-    addonPriceMonthly: 0,
   });
   const [editingKey, setEditingKey] = useState<string | null>(null);
 
@@ -316,9 +269,6 @@ export default function Modules() {
     setEditForm({
       name: mod.name,
       description: mod.description ?? "",
-      includedInPlans: mod.includedInPlans ?? [],
-      isAvailableAsAddon: mod.isAvailableAsAddon,
-      addonPriceMonthly: mod.addonPriceMonthly,
     });
     setEditOpen(true);
   };
@@ -345,7 +295,6 @@ export default function Modules() {
 
   const selected = modules.find((m) => m._id === selectedId) ?? modules[0];
   const activeCount = modules.filter((m) => m.isActive).length;
-  const addonCount = modules.filter((m) => m.isAvailableAsAddon).length;
   const SelectedIcon = selected ? iconMap[resolveIcon(selected)] : Boxes;
 
   // ─────────────────────────────────────────────────────────
@@ -443,15 +392,6 @@ export default function Modules() {
             {activeCount}
           </p>
         </div>
-        {/* <div className="bg-card border rounded-xl p-5 shadow-card">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Available as Addon</p>
-            <Settings2 className="h-4 w-4 text-info" />
-          </div>
-          <p className="text-3xl font-bold text-foreground mt-2">
-            {addonCount}
-          </p>
-        </div> */}
       </div>
 
       {/* Two-pane layout */}
@@ -564,29 +504,6 @@ export default function Modules() {
                       <p className="text-sm text-muted-foreground mt-1.5 max-w-xl">
                         {selected.description}
                       </p>
-                      <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground flex-wrap">
-                        {selected.isAvailableAsAddon && (
-                          <span>
-                            Addon price:{" "}
-                            <span className="text-foreground font-medium">
-                              ${selected.addonPriceMonthly}/mo
-                            </span>
-                          </span>
-                        )}
-                        {selected.includedInPlans?.length > 0 && (
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            Plans:
-                            {selected.includedInPlans.map((p) => (
-                              <span
-                                key={p}
-                                className="bg-primary/10 text-primary px-1.5 py-0.5 rounded capitalize font-medium"
-                              >
-                                {p}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </div>
                     </div>
                   </div>
 
@@ -619,38 +536,6 @@ export default function Modules() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">
-                      Available as Addon
-                    </p>
-                    <span
-                      className={`inline-flex items-center gap-1 text-xs font-medium ${
-                        selected.isAvailableAsAddon
-                          ? "text-success"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {selected.isAvailableAsAddon ? (
-                        <>
-                          <Check className="h-3.5 w-3.5" /> Yes
-                        </>
-                      ) : (
-                        <>
-                          <X className="h-3.5 w-3.5" /> No
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">
-                      Addon Price
-                    </p>
-                    <p className="font-medium text-foreground">
-                      {selected.isAvailableAsAddon
-                        ? `$${selected.addonPriceMonthly}/mo`
-                        : "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">
                       Created
                     </p>
                     <p className="font-medium text-foreground">
@@ -664,27 +549,6 @@ export default function Modules() {
                     <p className="font-medium text-foreground">
                       {new Date(selected.updatedAt).toLocaleDateString()}
                     </p>
-                  </div>
-                  <div className="col-span-full">
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Included in Plans
-                    </p>
-                    <div className="flex gap-2 flex-wrap">
-                      {selected.includedInPlans?.length > 0 ? (
-                        selected.includedInPlans.map((p) => (
-                          <span
-                            key={p}
-                            className="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full capitalize font-medium"
-                          >
-                            {p}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground text-xs">
-                          Not included in any plan
-                        </span>
-                      )}
-                    </div>
                   </div>
                 </div>
               </div>

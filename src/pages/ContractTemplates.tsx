@@ -15,6 +15,7 @@ import {
   Folder,
   FolderPlus,
   Settings2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -175,9 +176,7 @@ export default function ContractTemplates() {
         : templates.filter((t) => t.moduleKey === selectedModule),
     [templates, selectedModule],
   );
-  const published = moduleScoped.filter(
-    (t) => t.status === "Published",
-  ).length;
+  const published = moduleScoped.filter((t) => t.status === "Published").length;
   const activeModule = getModule(selectedModule);
 
   const openCreate = () => {
@@ -351,7 +350,7 @@ export default function ContractTemplates() {
 
   // ── Upload ────────────────────────────────────────────────
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadMeta, setUploadMeta] = useState({
     title: "",
     category: "Employment" as Category,
@@ -367,7 +366,7 @@ export default function ContractTemplates() {
   );
 
   const openUpload = () => {
-    setUploadFile(null);
+    setUploadFiles([]);
     setUploadMeta({
       title: "",
       category: "Employment",
@@ -386,13 +385,16 @@ export default function ContractTemplates() {
   };
 
   const uploadMutation = useMutation({
-    mutationFn: () => uploadTemplate(uploadFile as File, uploadMeta),
-    onSuccess: () => {
+    mutationFn: () => uploadTemplate(uploadFiles, uploadMeta),
+    onSuccess: (created) => {
       invalidate();
       setUploadOpen(false);
       toast({
-        title: "Template uploaded",
-        description: "Saved as a draft — publish when ready.",
+        title:
+          created.length === 1
+            ? "Template uploaded"
+            : `${created.length} templates uploaded`,
+        description: "Saved as draft — publish when ready.",
       });
     },
     onError: (err: any) =>
@@ -626,217 +628,221 @@ export default function ContractTemplates() {
         {/* Templates table */}
         <Card className="min-w-0 flex-1">
           <CardContent className="space-y-4 p-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="relative min-w-[220px] flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search templates..."
-                className="pl-9"
-              />
+            <div className="flex flex-wrap gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search templates..."
+                  className="pl-9"
+                />
+              </div>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="Published">Published</SelectItem>
+                  <SelectItem value="Draft">Draft</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="Published">Published</SelectItem>
-                <SelectItem value="Draft">Draft</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Template</TableHead>
-                <TableHead>Module</TableHead>
-                <TableHead>Folder</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Jurisdiction</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={9}
-                    className="py-10 text-center text-sm text-muted-foreground"
-                  >
-                    Loading templates…
-                  </TableCell>
+                  <TableHead>Template</TableHead>
+                  <TableHead>Module</TableHead>
+                  <TableHead>Folder</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Jurisdiction</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              )}
-              {!isLoading && filtered.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={9}
-                    className="py-10 text-center text-sm text-muted-foreground"
-                  >
-                    No templates match your filters.
-                  </TableCell>
-                </TableRow>
-              )}
-              {filtered.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      {t.sourceType === "uploaded" && (
-                        <span title="Uploaded Word document">
-                          <FileUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </TableHeader>
+              <TableBody>
+                {isLoading && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={9}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      Loading templates…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!isLoading && filtered.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={9}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No templates match your filters.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filtered.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {t.sourceType === "uploaded" && (
+                          <span title="Uploaded Word document">
+                            <FileUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          </span>
+                        )}
+                        <p className="font-medium text-foreground">{t.title}</p>
+                      </div>
+                      <p className="line-clamp-1 text-xs text-muted-foreground">
+                        {t.description}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <Badge variant="secondary" className="w-fit">
+                          {moduleLabel(t.moduleKey)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {areaLabel(t.moduleKey, t.areaKey)}
                         </span>
-                      )}
-                      <p className="font-medium text-foreground">{t.title}</p>
-                    </div>
-                    <p className="line-clamp-1 text-xs text-muted-foreground">
-                      {t.description}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5">
-                      <Badge variant="secondary" className="w-fit">
-                        {moduleLabel(t.moduleKey)}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {areaLabel(t.moduleKey, t.areaKey)}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={t.folderId ?? "uncategorized"}
-                      onValueChange={(v) =>
-                        moveFolderMutation.mutate({
-                          id: t.id,
-                          folderId: v === "uncategorized" ? null : v,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-8 w-[160px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="uncategorized">
-                          Uncategorized
-                        </SelectItem>
-                        {folders.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{t.category}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {t.jurisdiction || "—"}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    v{t.version}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        t.status === "Published" ? "default" : "secondary"
-                      }
-                    >
-                      {t.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(t.updatedAt)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setPreview(t)}
-                        aria-label="Preview"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {t.sourceType === "uploaded" && t.fileUrl && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
-                          aria-label="Download original file"
-                        >
-                          <a href={t.fileUrl} target="_blank" rel="noreferrer">
-                            <Download className="h-4 w-4" />
-                          </a>
-                        </Button>
-                      )}
-                      {t.sourceType === "uploaded" ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setReplaceTarget(t)}
-                          aria-label="Replace file"
-                        >
-                          <Upload className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(t)}
-                          aria-label="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={statusMutation.isPending}
-                        onClick={() => statusMutation.mutate(t)}
-                        aria-label={
-                          t.status === "Published" ? "Unpublish" : "Publish"
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={t.folderId ?? "uncategorized"}
+                        onValueChange={(v) =>
+                          moveFolderMutation.mutate({
+                            id: t.id,
+                            folderId: v === "uncategorized" ? null : v,
+                          })
                         }
                       >
-                        {t.status === "Published" ? (
-                          <Undo2 className="h-4 w-4" />
-                        ) : (
-                          <Send className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setPendingDelete(t)}
-                        aria-label="Delete"
+                        <SelectTrigger className="h-8 w-[160px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="uncategorized">
+                            Uncategorized
+                          </SelectItem>
+                          {folders.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{t.category}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {t.jurisdiction || "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      v{t.version}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          t.status === "Published" ? "default" : "secondary"
+                        }
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        {t.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(t.updatedAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setPreview(t)}
+                          aria-label="Preview"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {t.sourceType === "uploaded" && t.fileUrl && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            asChild
+                            aria-label="Download original file"
+                          >
+                            <a
+                              href={t.fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <Download className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        )}
+                        {t.sourceType === "uploaded" ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setReplaceTarget(t)}
+                            aria-label="Replace file"
+                          >
+                            <Upload className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(t)}
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={statusMutation.isPending}
+                          onClick={() => statusMutation.mutate(t)}
+                          aria-label={
+                            t.status === "Published" ? "Unpublish" : "Publish"
+                          }
+                        >
+                          {t.status === "Published" ? (
+                            <Undo2 className="h-4 w-4" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setPendingDelete(t)}
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </div>
@@ -1084,26 +1090,59 @@ export default function ContractTemplates() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="upload-file">Word document (.doc, .docx)</Label>
+              <Label htmlFor="upload-file">
+                Word document(s) (.doc, .docx) — select multiple to upload
+                several templates at once
+              </Label>
               <Input
                 id="upload-file"
                 type="file"
                 accept={WORD_ACCEPT}
-                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                multiple
+                onChange={(e) =>
+                  setUploadFiles(Array.from(e.target.files ?? []))
+                }
               />
-              {uploadFile && (
-                <p className="text-xs text-muted-foreground">
-                  {uploadFile.name} ·{" "}
-                  {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
-                </p>
+              {uploadFiles.length > 0 && (
+                <div className="space-y-1 rounded-md border p-2">
+                  {uploadFiles.map((f, i) => (
+                    <div
+                      key={`${f.name}-${i}`}
+                      className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+                    >
+                      <span className="truncate">
+                        {f.name} · {(f.size / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setUploadFiles((prev) =>
+                            prev.filter((_, idx) => idx !== i),
+                          )
+                        }
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="upload-title">Title</Label>
+                <Label htmlFor="upload-title">
+                  Title
+                  {uploadFiles.length > 1 && (
+                    <span className="ml-1.5 font-normal text-muted-foreground">
+                      (ignored — each file's own name is used instead)
+                    </span>
+                  )}
+                </Label>
                 <Input
                   id="upload-title"
                   value={uploadMeta.title}
+                  disabled={uploadFiles.length > 1}
                   onChange={(e) =>
                     setUploadMeta({ ...uploadMeta, title: e.target.value })
                   }
@@ -1232,13 +1271,16 @@ export default function ContractTemplates() {
             <Button
               className="gradient-primary"
               disabled={
-                !uploadFile ||
-                !uploadMeta.title.trim() ||
+                uploadFiles.length === 0 ||
+                (uploadFiles.length === 1 && !uploadMeta.title.trim()) ||
                 uploadMutation.isPending
               }
               onClick={() => uploadMutation.mutate()}
             >
-              <Upload className="mr-2 h-4 w-4" /> Upload as draft
+              <Upload className="mr-2 h-4 w-4" />
+              {uploadFiles.length > 1
+                ? `Upload ${uploadFiles.length} as drafts`
+                : "Upload as draft"}
             </Button>
           </DialogFooter>
         </DialogContent>

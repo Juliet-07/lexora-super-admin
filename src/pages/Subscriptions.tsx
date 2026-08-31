@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CreditCard,
   TrendingUp,
@@ -12,6 +13,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  MoreHorizontal,
+  User,
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +28,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,7 +69,6 @@ type ApiPlan = {
   priceMonthly: number;
   priceAnnually: number;
   maxUsers: number;
-  maxClients: number;
   maxStorageGb: number;
   features: Record<string, any>;
   isActive: boolean;
@@ -65,7 +83,6 @@ type CreatePlanPayload = {
   priceMonthly: number;
   priceAnnually: number;
   maxUsers: number;
-  maxClients: number;
   maxStorageGb: number;
   features: Record<string, any>;
 };
@@ -95,7 +112,7 @@ type PaginatedSubs = {
   totalPages: number;
 };
 
-const PLAN_OPTIONS = ["free", "starter", "professional", "enterprise"];
+const PLAN_OPTIONS = ["free", "lite", "grow", "enterprise", "premium"];
 
 const planStatusColor = (s: string) =>
   s === "active"
@@ -122,7 +139,6 @@ type FormState = {
   priceMonthly: string;
   priceAnnually: string;
   maxUsers: string;
-  maxClients: string;
   maxStorageGb: string;
 };
 
@@ -135,17 +151,20 @@ const emptyForm: FormState = {
   priceMonthly: "",
   priceAnnually: "",
   maxUsers: "",
-  maxClients: "",
   maxStorageGb: "",
 };
 
 // ─── Component ────────────────────────────────────────────────
 export default function Subscriptions() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [subsPage, setSubsPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<TenantSubscription | null>(
+    null,
+  );
 
   // ── Fetch plans ───────────────────────────────────────────
   const { data: plans = [], isLoading: plansLoading } = useQuery<ApiPlan[]>({
@@ -210,6 +229,18 @@ export default function Subscriptions() {
       toast.error(err?.response?.data?.message ?? "Failed to update plan"),
   });
 
+  // ── Delete tenant ─────────────────────────────────────────
+  const deleteMutation = useMutation({
+    mutationFn: (tenantId: string) =>
+      api.delete(`/super-admin/tenants/${tenantId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      setDeleteTarget(null);
+      toast.success("Tenant deleted successfully.");
+    },
+    onError: () => toast.error("Failed to delete tenant"),
+  });
+
   // ── Helpers ───────────────────────────────────────────────
   const openCreate = () => {
     setEditingPlan(null);
@@ -228,7 +259,6 @@ export default function Subscriptions() {
       priceMonthly: String(p.priceMonthly),
       priceAnnually: String(p.priceAnnually),
       maxUsers: String(p.maxUsers),
-      maxClients: String(p.maxClients),
       maxStorageGb: String(p.maxStorageGb),
     });
     setOpen(true);
@@ -268,7 +298,6 @@ export default function Subscriptions() {
       priceMonthly: Number(form.priceMonthly) || 0,
       priceAnnually: Number(form.priceAnnually) || 0,
       maxUsers: Number(form.maxUsers) || 0,
-      maxClients: Number(form.maxClients) || 0,
       maxStorageGb: Number(form.maxStorageGb) || 0,
       features: {},
     };
@@ -386,17 +415,11 @@ export default function Subscriptions() {
               </div>
 
               {/* Limits */}
-              <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+              <div className="grid grid-cols-2 gap-2 mb-4 text-center">
                 <div className="bg-muted/40 rounded-lg p-2">
                   <p className="text-xs text-muted-foreground">Users</p>
                   <p className="text-sm font-semibold">
                     {plan.maxUsers === 0 ? "∞" : plan.maxUsers}
-                  </p>
-                </div>
-                <div className="bg-muted/40 rounded-lg p-2">
-                  <p className="text-xs text-muted-foreground">Clients</p>
-                  <p className="text-sm font-semibold">
-                    {plan.maxClients === 0 ? "∞" : plan.maxClients}
                   </p>
                 </div>
                 <div className="bg-muted/40 rounded-lg p-2">
@@ -472,6 +495,7 @@ export default function Subscriptions() {
                     "Modules",
                     "Period End",
                     "Trial Ends",
+                    "",
                   ].map((h) => (
                     <th
                       key={h}
@@ -557,6 +581,33 @@ export default function Subscriptions() {
                         {sub.trialEndsAt
                           ? new Date(sub.trialEndsAt).toLocaleDateString()
                           : "—"}
+                      </td>
+                      <td className="p-4">
+                        {tenant && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  navigate(`/tenants/${tenant._id}`)
+                                }
+                              >
+                                <User className="h-4 w-4 mr-2" /> View Tenant
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => setDeleteTarget(sub)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                Tenant
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </td>
                     </tr>
                   );
@@ -699,7 +750,7 @@ export default function Subscriptions() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Max Users</Label>
                 <Input
@@ -710,19 +761,6 @@ export default function Subscriptions() {
                   value={form.maxUsers}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, maxUsers: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>Max Clients</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="mt-1.5"
-                  placeholder="500"
-                  value={form.maxClients}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, maxClients: e.target.value }))
                   }
                 />
               </div>
@@ -779,6 +817,44 @@ export default function Subscriptions() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete tenant confirm */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Tenant</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <strong>
+                {deleteTarget?.tenantId?.tenantProfile?.businessName ??
+                  (deleteTarget?.tenantId
+                    ? `${deleteTarget.tenantId.firstName} ${deleteTarget.tenantId.lastName}`
+                    : "this tenant")}
+              </strong>{" "}
+              and every user under them. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() =>
+                deleteTarget?.tenantId &&
+                deleteMutation.mutate(deleteTarget.tenantId._id)
+              }
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Delete Tenant"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

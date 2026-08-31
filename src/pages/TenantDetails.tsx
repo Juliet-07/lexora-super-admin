@@ -92,12 +92,10 @@ type TenantDetail = {
     status: string;
     activeModules: string[];
     baseModules: string[];
-    addonModules: string[];
     currentPeriodStart?: string;
     currentPeriodEnd?: string;
     trialEndsAt?: string;
     maxUsersOverride?: number;
-    maxClientsOverride?: number;
   };
 };
 
@@ -114,10 +112,15 @@ type UpdatePayload = {
 
 type ChangePlanPayload = {
   plan: string;
-  addonModules: string[];
   endsAt: string;
   maxUsersOverride: number;
-  maxClientsOverride: number;
+  // Real payment recorded alongside the plan change — omitted (0)
+  // when nothing was actually paid, e.g. Free, or Premium before
+  // its separately-quoted invoice is settled.
+  paymentAmount: number;
+  paymentCurrency: string;
+  paymentReference: string;
+  paymentNotes: string;
 };
 
 const INDUSTRY_OPTIONS = [
@@ -181,15 +184,16 @@ export default function TenantDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
-  const [addonInput, setAddonInput] = useState("");
 
   const [editForm, setEditForm] = useState<UpdatePayload>({});
   const [planForm, setPlanForm] = useState<ChangePlanPayload>({
     plan: "free",
-    addonModules: [],
     endsAt: "",
     maxUsersOverride: 0,
-    maxClientsOverride: 0,
+    paymentAmount: 0,
+    paymentCurrency: "USD",
+    paymentReference: "",
+    paymentNotes: "",
   });
 
   // ── Fetch detail ──────────────────────────────────────────
@@ -279,12 +283,33 @@ export default function TenantDetail() {
     onError: () => toast.error("Failed to update tenant status"),
   });
 
-  const addAddon = () => {
-    const v = addonInput.trim().toLowerCase();
-    if (!v || planForm.addonModules.includes(v)) return;
-    setPlanForm((p) => ({ ...p, addonModules: [...p.addonModules, v] }));
-    setAddonInput("");
-  };
+  // ── All real platform modules — for the per-tenant toggle below.
+  // Every plan includes every module now; this is what actually
+  // controls whether this one tenant can use a given module.
+  const { data: allModules = [] } = useQuery<
+    { _id: string; key: string; name: string; isActive: boolean }[]
+  >({
+    queryKey: ["modules"],
+    queryFn: async () => {
+      const res = await api.get("/super-admin/modules");
+      return Array.isArray(res.data?.data) ? res.data.data : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const moduleAccessMutation = useMutation({
+    mutationFn: ({ key, enabled }: { key: string; enabled: boolean }) =>
+      api.patch(`/super-admin/tenants/${id}/subscription/modules/${key}`, {
+        enabled,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant", id] });
+    },
+    onError: (err: any) =>
+      toast.error(
+        err?.response?.data?.message ?? "Failed to update module access",
+      ),
+  });
 
   // ─────────────────────────────────────────────────────────
   if (isLoading) {
@@ -315,6 +340,19 @@ export default function TenantDetail() {
   const sub = tenant.subscription;
   const addr = tenant.tenantProfile?.address;
   const cp = tenant.tenantProfile?.contactPerson;
+
+  const openChangePlan = () => {
+    setPlanForm({
+      plan: sub?.plan ?? "free",
+      endsAt: "",
+      maxUsersOverride: sub?.maxUsersOverride ?? 0,
+      paymentAmount: 0,
+      paymentCurrency: "USD",
+      paymentReference: "",
+      paymentNotes: "",
+    });
+    setPlanOpen(true);
+  };
 
   const statusColor =
     tenant.status === "active"
@@ -369,7 +407,7 @@ export default function TenantDetail() {
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4 mr-1.5" /> Edit
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setPlanOpen(true)}>
+          <Button variant="outline" size="sm" onClick={openChangePlan}>
             <RefreshCw className="h-4 w-4 mr-1.5" /> Change Plan
           </Button>
           <Button
@@ -481,11 +519,7 @@ export default function TenantDetail() {
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
                 Subscription
               </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPlanOpen(true)}
-              >
+              <Button variant="outline" size="sm" onClick={openChangePlan}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Change Plan
               </Button>
             </div>
@@ -553,45 +587,51 @@ export default function TenantDetail() {
                       <p className="font-medium">{sub.maxUsersOverride}</p>
                     </div>
                   )}
-                  {sub.maxClientsOverride != null &&
-                    sub.maxClientsOverride > 0 && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">
-                          Max Clients Override
-                        </p>
-                        <p className="font-medium">{sub.maxClientsOverride}</p>
-                      </div>
-                    )}
                 </div>
 
-                {/* Modules */}
-                {sub.activeModules?.length > 0 && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">
-                      Active Modules
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {sub.activeModules.map((m) => (
-                        <span
-                          key={m}
-                          className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${
-                            sub.addonModules?.includes(m)
-                              ? "bg-primary/10 text-primary"
-                              : "bg-muted text-muted-foreground"
+                {/* Per-tenant module access — every module is on
+                    every plan now, this is the real, independent
+                    switch for this one tenant. */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">
+                    Module Access
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {allModules.map((m) => {
+                      const enabled = sub.activeModules?.includes(m.key);
+                      return (
+                        <button
+                          key={m.key}
+                          disabled={moduleAccessMutation.isPending}
+                          onClick={() =>
+                            moduleAccessMutation.mutate({
+                              key: m.key,
+                              enabled: !enabled,
+                            })
+                          }
+                          className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                            enabled
+                              ? "bg-primary/10 text-primary hover:bg-primary/20"
+                              : "bg-muted text-muted-foreground hover:bg-muted/70"
                           }`}
                         >
                           <Package className="h-3 w-3" />
-                          {m}
-                          {sub.addonModules?.includes(m) && (
-                            <span className="text-[9px] bg-primary/20 px-1 rounded">
-                              addon
-                            </span>
+                          {m.name}
+                          {enabled ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <X className="h-3 w-3" />
                           )}
-                        </span>
-                      ))}
-                    </div>
+                        </button>
+                      );
+                    })}
+                    {!allModules.length && (
+                      <p className="text-xs text-muted-foreground">
+                        No platform modules created yet.
+                      </p>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -805,73 +845,92 @@ export default function TenantDetail() {
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Max Users Override</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="mt-1.5"
-                  value={planForm.maxUsersOverride}
-                  onChange={(e) =>
-                    setPlanForm((p) => ({
-                      ...p,
-                      maxUsersOverride: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>Max Clients Override</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="mt-1.5"
-                  value={planForm.maxClientsOverride}
-                  onChange={(e) =>
-                    setPlanForm((p) => ({
-                      ...p,
-                      maxClientsOverride: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-            </div>
             <div>
-              <Label>Addon Modules</Label>
-              <div className="flex gap-2 mt-1.5">
-                <Input
-                  placeholder="e.g. kyc/aml"
-                  value={addonInput}
-                  onChange={(e) => setAddonInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addAddon()}
-                />
-                <Button variant="outline" onClick={addAddon}>
-                  Add
-                </Button>
-              </div>
-              {planForm.addonModules.length > 0 && (
-                <div className="flex gap-1.5 flex-wrap mt-2">
-                  {planForm.addonModules.map((m) => (
-                    <span
-                      key={m}
-                      className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded-full"
-                    >
-                      {m}
-                      <button
-                        onClick={() =>
-                          setPlanForm((p) => ({
-                            ...p,
-                            addonModules: p.addonModules.filter((x) => x !== m),
-                          }))
-                        }
-                      >
-                        <X className="h-3 w-3 hover:text-destructive" />
-                      </button>
-                    </span>
-                  ))}
+              <Label>Max Users Override</Label>
+              <Input
+                type="number"
+                min={0}
+                className="mt-1.5"
+                value={planForm.maxUsersOverride}
+                onChange={(e) =>
+                  setPlanForm((p) => ({
+                    ...p,
+                    maxUsersOverride: Number(e.target.value),
+                  }))
+                }
+              />
+            </div>
+
+            <div className="border-t pt-4 space-y-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                Record payment (optional)
+              </p>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Leave the amount at 0 if nothing was paid yet — e.g. Free, or
+                Premium before its separately-quoted invoice is settled. A real
+                transaction is only created when an amount is entered.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Amount Paid</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    className="mt-1.5"
+                    value={planForm.paymentAmount}
+                    onChange={(e) =>
+                      setPlanForm((p) => ({
+                        ...p,
+                        paymentAmount: Number(e.target.value),
+                      }))
+                    }
+                  />
                 </div>
-              )}
+                <div>
+                  <Label>Currency</Label>
+                  <Select
+                    value={planForm.paymentCurrency}
+                    onValueChange={(v) =>
+                      setPlanForm((p) => ({ ...p, paymentCurrency: v }))
+                    }
+                  >
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="RWF">RWF</SelectItem>
+                      <SelectItem value="KES">KES</SelectItem>
+                      <SelectItem value="UGX">UGX</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label>Payment Reference</Label>
+                <Input
+                  className="mt-1.5"
+                  placeholder="e.g. bank transfer ref, receipt number"
+                  value={planForm.paymentReference}
+                  onChange={(e) =>
+                    setPlanForm((p) => ({
+                      ...p,
+                      paymentReference: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Notes</Label>
+                <Input
+                  className="mt-1.5"
+                  placeholder="Optional"
+                  value={planForm.paymentNotes}
+                  onChange={(e) =>
+                    setPlanForm((p) => ({ ...p, paymentNotes: e.target.value }))
+                  }
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
