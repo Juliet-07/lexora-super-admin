@@ -62,6 +62,15 @@ export const TEMPLATE_MODULES: TemplateModule[] = [
       { key: "risk", name: "Risk & Audit" },
     ],
   },
+  {
+    key: "kyc_aml",
+    name: "KYC / AML",
+    description: "Client onboarding engagement and contracting templates",
+    areas: [
+      { key: "client_engagement", name: "Client Engagement" },
+      { key: "fund_trust", name: "Trust & Fiduciary" },
+    ],
+  },
 ];
 
 export const getModule = (key?: string | null) =>
