@@ -91,15 +91,8 @@ type CreateTenantPayload = {
 };
 type ChangePlanPayload = {
   plan: string;
-  endsAt: string;
   maxUsersOverride: number;
-  // Real payment recorded alongside the plan change — omitted (0)
-  // when nothing was actually paid, e.g. Free, or Premium before
-  // its separately-quoted invoice is settled.
-  paymentAmount: number;
-  paymentCurrency: "USD" | "RWF";
-  paymentReference: string;
-  paymentNotes: string;
+  currency: "USD" | "RWF";
 };
 type RecordPaymentPayload = {
   tenantId: string;
@@ -174,12 +167,8 @@ const defaultPayload: CreateTenantPayload = {
 };
 const defaultPlanPayload: ChangePlanPayload = {
   plan: "free",
-  endsAt: "",
   maxUsersOverride: 0,
-  paymentAmount: 0,
-  paymentCurrency: "USD",
-  paymentReference: "",
-  paymentNotes: "",
+  currency: "RWF",
 };
 
 // ─── Component ────────────────────────────────────────────────
@@ -237,7 +226,9 @@ export default function Tenants() {
   // ── Fetch real, active subscription plans — never hardcode this
   // list, since plans are created/renamed/retired by the super
   // admin at any time on the Subscriptions page.
-  const { data: plans = [] } = useQuery<{ plan: string; name: string }[]>({
+  const { data: plans = [] } = useQuery<
+    { plan: string; name: string; priceMonthly?: number }[]
+  >({
     queryKey: ["plans"],
     queryFn: async () => {
       const res = await api.get("/super-admin/plans");
@@ -316,19 +307,41 @@ export default function Tenants() {
     onError: () => toast.error("Failed to delete tenant"),
   });
 
-  // ── Change plan ───────────────────────────────────────────
+  // ── Change plan — now a real invoice, matching the actual
+  // workflow: this sends the tenant a real invoice by email with
+  // Proof-of-Payment instructions. The plan itself only actually
+  // changes once that invoice is later confirmed as paid (from the
+  // Transactions page) — never instantly here.
   const planMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: ChangePlanPayload }) =>
-      api.post(`/super-admin/tenants/${id}/subscription`, payload),
+    mutationFn: ({
+      id,
+      payload,
+      amount,
+    }: {
+      id: string;
+      payload: ChangePlanPayload;
+      amount: number;
+    }) =>
+      api.post("/super-admin/payments/manual", {
+        tenantId: id,
+        plan: payload.plan,
+        amount,
+        currency: payload.currency,
+        documentType: "invoice",
+        maxUsersOverride: payload.maxUsersOverride || undefined,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
       setPlanOpen(false);
       setPlanTarget(null);
       setPlanForm(defaultPlanPayload);
-      toast.success("Subscription plan updated.");
+      toast.success(
+        "Invoice sent to the tenant. Confirm it from Transactions once payment is received.",
+      );
     },
     onError: (err: any) =>
-      toast.error(err?.response?.data?.message ?? "Failed to update plan"),
+      toast.error(err?.response?.data?.message ?? "Failed to send invoice"),
   });
 
   // ── Change Status ─────────────────────────────────────────
@@ -364,12 +377,8 @@ export default function Tenants() {
     setPlanTarget(tenant);
     setPlanForm({
       plan: tenant.subscription?.plan ?? "free",
-      endsAt: "",
       maxUsersOverride: 0,
-      paymentAmount: 0,
-      paymentCurrency: "USD",
-      paymentReference: "",
-      paymentNotes: "",
+      currency: "RWF",
     });
     setPlanOpen(true);
   };
@@ -1128,9 +1137,9 @@ export default function Tenants() {
       <Dialog open={planOpen} onOpenChange={setPlanOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Change Subscription Plan</DialogTitle>
+            <DialogTitle>Send Upgrade Invoice</DialogTitle>
             <DialogDescription>
-              Updating plan for{" "}
+              For{" "}
               <strong>
                 {planTarget?.tenantProfile?.businessName ??
                   planTarget?.firstName}
@@ -1138,6 +1147,13 @@ export default function Tenants() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground">
+              This sends the tenant a real invoice by email with
+              Proof-of-Payment instructions. The plan itself only actually
+              changes once you confirm that invoice as paid from the
+              Transactions page.
+            </div>
+
             <div>
               <Label>Plan</Label>
               <Select
@@ -1160,23 +1176,52 @@ export default function Tenants() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Period End Date</Label>
-              <Input
-                type="date"
-                className="mt-1.5"
-                value={planForm.endsAt}
-                onChange={(e) =>
-                  setPlanForm((p) => ({ ...p, endsAt: e.target.value }))
-                }
-              />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Invoice Currency</Label>
+                <Select
+                  value={planForm.currency}
+                  onValueChange={(v) =>
+                    setPlanForm((p) => ({ ...p, currency: v as "USD" | "RWF" }))
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="RWF">RWF</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Amount</Label>
+                <div className="mt-1.5 h-10 flex items-center px-3 rounded-md border bg-muted/40 text-sm font-medium">
+                  {(() => {
+                    const selected = plans.find(
+                      (p) => p.plan === planForm.plan,
+                    );
+                    if (!selected?.priceMonthly) return "—";
+                    const amount =
+                      planForm.currency === "RWF"
+                        ? Math.round(selected.priceMonthly * 1350)
+                        : selected.priceMonthly;
+                    return planForm.currency === "RWF"
+                      ? `RWF ${amount.toLocaleString()}`
+                      : `$${amount.toLocaleString()}`;
+                  })()}
+                </div>
+              </div>
             </div>
+
             <div>
-              <Label>Max Users Override</Label>
+              <Label>Max Users Override (optional)</Label>
               <Input
                 type="number"
                 min={0}
                 className="mt-1.5"
+                placeholder="Leave at 0 to use the plan's standard limit"
                 value={planForm.maxUsersOverride}
                 onChange={(e) =>
                   setPlanForm((p) => ({
@@ -1185,79 +1230,10 @@ export default function Tenants() {
                   }))
                 }
               />
-            </div>
-
-            <div className="border-t pt-4 space-y-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                Record payment (optional)
+              <p className="text-[11px] text-muted-foreground mt-1">
+                A real, per-tenant exception — only applied once this invoice is
+                confirmed.
               </p>
-              <p className="text-xs text-muted-foreground -mt-2">
-                Leave the amount at 0 if nothing was paid yet — e.g. Free, or
-                Premium before its separately-quoted invoice is settled. A real
-                transaction is only created when an amount is entered.
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Amount Paid</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    className="mt-1.5"
-                    value={planForm.paymentAmount}
-                    onChange={(e) =>
-                      setPlanForm((p) => ({
-                        ...p,
-                        paymentAmount: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Currency</Label>
-                  <Select
-                    value={planForm.paymentCurrency}
-                    onValueChange={(v) =>
-                      setPlanForm((p) => ({
-                        ...p,
-                        paymentCurrency: v as "USD" | "RWF",
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="mt-1.5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="RWF">RWF</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label>Payment Reference</Label>
-                <Input
-                  className="mt-1.5"
-                  placeholder="e.g. bank transfer ref, receipt number"
-                  value={planForm.paymentReference}
-                  onChange={(e) =>
-                    setPlanForm((p) => ({
-                      ...p,
-                      paymentReference: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <Label>Notes</Label>
-                <Input
-                  className="mt-1.5"
-                  placeholder="Optional"
-                  value={planForm.paymentNotes}
-                  onChange={(e) =>
-                    setPlanForm((p) => ({ ...p, paymentNotes: e.target.value }))
-                  }
-                />
-              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1267,17 +1243,27 @@ export default function Tenants() {
             <Button
               className="gradient-primary"
               disabled={planMutation.isPending}
-              onClick={() =>
-                planTarget &&
-                planMutation.mutate({ id: planTarget._id, payload: planForm })
-              }
+              onClick={() => {
+                if (!planTarget) return;
+                const selected = plans.find((p) => p.plan === planForm.plan);
+                const amount = selected?.priceMonthly
+                  ? planForm.currency === "RWF"
+                    ? Math.round(selected.priceMonthly * 1350)
+                    : selected.priceMonthly
+                  : 0;
+                planMutation.mutate({
+                  id: planTarget._id,
+                  payload: planForm,
+                  amount,
+                });
+              }}
             >
               {planMutation.isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating…
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending…
                 </>
               ) : (
-                "Update Plan"
+                "Send Invoice"
               )}
             </Button>
           </DialogFooter>
