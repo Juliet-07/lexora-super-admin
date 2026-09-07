@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Loader2,
   MessageSquare,
+  AlertCircle,
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,7 @@ import { api } from "@/lib/api";
 type TransactionStatus =
   | "pending"
   | "awaiting_payment"
+  | "payment_claimed"
   | "paid"
   | "failed"
   | "cancelled"
@@ -70,6 +72,7 @@ interface Transaction {
   invoiceNumber: string | null;
   receiptNumber: string | null;
   paidAt: string | null;
+  paymentClaimedAt: string | null;
   paymentMethod: PaymentMethod | null;
   paymentReference: string | null;
   notes: string | null;
@@ -103,6 +106,10 @@ const statusConfig: Record<
   awaiting_payment: {
     label: "Awaiting Payment",
     className: "bg-blue-100 text-blue-700",
+  },
+  payment_claimed: {
+    label: "Payment Claimed",
+    className: "bg-amber-100 text-amber-700",
   },
   failed: { label: "Failed", className: "bg-red-100 text-red-700" },
   cancelled: { label: "Cancelled", className: "bg-slate-100 text-slate-600" },
@@ -253,6 +260,8 @@ export default function Transactions() {
   // ── Summary stats ─────────────────────────────────────────
   const awaitingCount =
     stats?.byStatus.find((s) => s._id === "awaiting_payment")?.count ?? 0;
+  const claimedCount =
+    stats?.byStatus.find((s) => s._id === "payment_claimed")?.count ?? 0;
   const failedCount =
     stats?.byStatus.find((s) => s._id === "failed")?.count ?? 0;
   const usdRevenue = stats?.byCurrency.find((c) => c._id === "USD")?.total ?? 0;
@@ -279,7 +288,7 @@ export default function Transactions() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Total Revenue (USD)"
           value={`$${usdRevenue.toLocaleString(undefined, { minimumFractionDigits: 0 })}`}
@@ -292,6 +301,13 @@ export default function Transactions() {
           value={`RWF ${rwfRevenue.toLocaleString()}`}
           change="Confirmed payments"
           icon={CircleDollarSign}
+        />
+        <StatCard
+          title="Payment Claimed"
+          value={String(claimedCount)}
+          change="Tenant says they've paid — verify & confirm"
+          changeType={claimedCount > 0 ? "negative" : "neutral"}
+          icon={AlertCircle}
         />
         <StatCard
           title="Awaiting Payment"
@@ -337,6 +353,7 @@ export default function Transactions() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="payment_claimed">Payment Claimed</SelectItem>
             <SelectItem value="awaiting_payment">Awaiting Payment</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="failed">Failed</SelectItem>
@@ -404,7 +421,8 @@ export default function Transactions() {
                 const stat = statusConfig[t.status] ?? statusConfig.pending;
                 const docNumber = t.receiptNumber ?? t.invoiceNumber ?? "—";
                 const isInvoicePending =
-                  t.status === "awaiting_payment" &&
+                  (t.status === "awaiting_payment" ||
+                    t.status === "payment_claimed") &&
                   t.documentType === "invoice";
 
                 return (
@@ -546,6 +564,15 @@ export default function Transactions() {
 
           {confirmTarget && (
             <div className="space-y-4 py-2">
+              {confirmTarget.status === "payment_claimed" &&
+                confirmTarget.paymentClaimedAt && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                    The tenant declared they made this payment on{" "}
+                    {new Date(confirmTarget.paymentClaimedAt).toLocaleString()}.
+                    Confirm only after verifying the Proof of Payment received
+                    at finance@lexoraafrica.com.
+                  </div>
+                )}
               {/* Invoice summary */}
               <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">
                 <div className="flex justify-between">
