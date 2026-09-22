@@ -9,7 +9,6 @@ import {
   Eye,
   Send,
   Undo2,
-  Upload,
   FileUp,
   Download,
   Folder,
@@ -69,8 +68,6 @@ import {
   updateTemplate,
   setStatus as setTemplateStatus,
   deleteTemplate,
-  uploadTemplate,
-  replaceTemplateFile,
   fetchFolders,
   createFolder,
   updateFolder,
@@ -86,9 +83,6 @@ import {
   areaLabel,
 } from "@/lib/contract-template";
 import { getMergeFieldsForModule } from "@/lib/contract-merge-fields";
-
-const WORD_ACCEPT =
-  ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -349,78 +343,6 @@ export default function ContractTemplates() {
       }),
   });
 
-  // ── Upload ────────────────────────────────────────────────
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
-  const [uploadMeta, setUploadMeta] = useState({
-    title: "",
-    category: "Employment" as Category,
-    moduleKey: "crm",
-    areaKey: "contracts" as string | null,
-    jurisdiction: "",
-    description: "",
-    version: "1.0",
-    folderId: null as string | null,
-  });
-  const [replaceTarget, setReplaceTarget] = useState<ContractTemplate | null>(
-    null,
-  );
-
-  const openUpload = () => {
-    setUploadFiles([]);
-    setUploadMeta({
-      title: "",
-      category: "Employment",
-      moduleKey: selectedModule === "all" ? "crm" : selectedModule,
-      areaKey:
-        selectedArea !== "all"
-          ? selectedArea
-          : (getModule(selectedModule === "all" ? "crm" : selectedModule)
-              ?.areas[0]?.key ?? null),
-      jurisdiction: "",
-      description: "",
-      version: "1.0",
-      folderId: null,
-    });
-    setUploadOpen(true);
-  };
-
-  const uploadMutation = useMutation({
-    mutationFn: () => uploadTemplate(uploadFiles, uploadMeta),
-    onSuccess: (created) => {
-      invalidate();
-      setUploadOpen(false);
-      toast({
-        title:
-          created.length === 1
-            ? "Template uploaded"
-            : `${created.length} templates uploaded`,
-        description: "Saved as draft — publish when ready.",
-      });
-    },
-    onError: (err: any) =>
-      toast({
-        title: "Failed to upload template",
-        description: err?.response?.data?.message,
-        variant: "destructive",
-      }),
-  });
-
-  const replaceFileMutation = useMutation({
-    mutationFn: (file: File) => replaceTemplateFile(replaceTarget!.id, file),
-    onSuccess: () => {
-      invalidate();
-      setReplaceTarget(null);
-      toast({ title: "File replaced" });
-    },
-    onError: (err: any) =>
-      toast({
-        title: "Failed to replace file",
-        description: err?.response?.data?.message,
-        variant: "destructive",
-      }),
-  });
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -434,9 +356,6 @@ export default function ContractTemplates() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={openUpload}>
-            <Upload className="mr-2 h-4 w-4" /> Upload template
-          </Button>
           <Button onClick={openCreate} className="gradient-primary">
             <Plus className="mr-2 h-4 w-4" /> New template
           </Button>
@@ -796,25 +715,14 @@ export default function ContractTemplates() {
                             </a>
                           </Button>
                         )}
-                        {t.sourceType === "uploaded" ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setReplaceTarget(t)}
-                            aria-label="Replace file"
-                          >
-                            <Upload className="h-4 w-4" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEdit(t)}
-                            aria-label="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(t)}
+                          aria-label="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1080,243 +988,6 @@ export default function ContractTemplates() {
               </article>
             )}
           </ScrollArea>
-        </DialogContent>
-      </Dialog>
-
-      {/* Upload template */}
-      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Upload contract template</DialogTitle>
-            <DialogDescription>
-              A Word document's real content is extracted automatically and
-              becomes the template's text — previewable and
-              editable-per-contract the same way an authored template is. Only
-              .doc/.docx files are accepted.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="upload-file">
-                Word document(s) (.doc, .docx) — select multiple to upload
-                several templates at once
-              </Label>
-              <Input
-                id="upload-file"
-                type="file"
-                accept={WORD_ACCEPT}
-                multiple
-                onChange={(e) =>
-                  setUploadFiles(Array.from(e.target.files ?? []))
-                }
-              />
-              {uploadFiles.length > 0 && (
-                <div className="space-y-1 rounded-md border p-2">
-                  {uploadFiles.map((f, i) => (
-                    <div
-                      key={`${f.name}-${i}`}
-                      className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
-                    >
-                      <span className="truncate">
-                        {f.name} · {(f.size / 1024 / 1024).toFixed(2)} MB
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setUploadFiles((prev) =>
-                            prev.filter((_, idx) => idx !== i),
-                          )
-                        }
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="upload-title">
-                  Title
-                  {uploadFiles.length > 1 && (
-                    <span className="ml-1.5 font-normal text-muted-foreground">
-                      (ignored — each file's own name is used instead)
-                    </span>
-                  )}
-                </Label>
-                <Input
-                  id="upload-title"
-                  value={uploadMeta.title}
-                  disabled={uploadFiles.length > 1}
-                  onChange={(e) =>
-                    setUploadMeta({ ...uploadMeta, title: e.target.value })
-                  }
-                  placeholder="e.g. Standard Employment Agreement"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Module</Label>
-                <Select
-                  value={uploadMeta.moduleKey}
-                  onValueChange={(v) =>
-                    setUploadMeta({
-                      ...uploadMeta,
-                      moduleKey: v,
-                      areaKey: getModule(v)?.areas[0]?.key ?? null,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TEMPLATE_MODULES.map((m) => (
-                      <SelectItem key={m.key} value={m.key}>
-                        {m.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Area</Label>
-                <Select
-                  value={uploadMeta.areaKey ?? ""}
-                  onValueChange={(v) =>
-                    setUploadMeta({ ...uploadMeta, areaKey: v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an area" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(getModule(uploadMeta.moduleKey)?.areas ?? []).map((a) => (
-                      <SelectItem key={a.key} value={a.key}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={uploadMeta.category}
-                  onValueChange={(v) =>
-                    setUploadMeta({ ...uploadMeta, category: v as Category })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="upload-jurisdiction">Jurisdiction</Label>
-                <Input
-                  id="upload-jurisdiction"
-                  value={uploadMeta.jurisdiction}
-                  onChange={(e) =>
-                    setUploadMeta({
-                      ...uploadMeta,
-                      jurisdiction: e.target.value,
-                    })
-                  }
-                  placeholder="e.g. Rwanda"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Folder</Label>
-                <Select
-                  value={uploadMeta.folderId ?? "uncategorized"}
-                  onValueChange={(v) =>
-                    setUploadMeta({
-                      ...uploadMeta,
-                      folderId: v === "uncategorized" ? null : v,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="uncategorized">Uncategorized</SelectItem>
-                    {folders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="upload-description">Description</Label>
-                <Textarea
-                  id="upload-description"
-                  value={uploadMeta.description}
-                  onChange={(e) =>
-                    setUploadMeta({
-                      ...uploadMeta,
-                      description: e.target.value,
-                    })
-                  }
-                  placeholder="Short summary tenants will see in the template list"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              className="gradient-primary"
-              disabled={
-                uploadFiles.length === 0 ||
-                (uploadFiles.length === 1 && !uploadMeta.title.trim()) ||
-                uploadMutation.isPending
-              }
-              onClick={() => uploadMutation.mutate()}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {uploadFiles.length > 1
-                ? `Upload ${uploadFiles.length} as drafts`
-                : "Upload as draft"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Replace an uploaded template's file */}
-      <Dialog
-        open={!!replaceTarget}
-        onOpenChange={(o) => !o && setReplaceTarget(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Replace file — {replaceTarget?.title}</DialogTitle>
-            <DialogDescription>
-              The new document's content will be re-extracted, replacing the
-              current preview text.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            type="file"
-            accept={WORD_ACCEPT}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) replaceFileMutation.mutate(file);
-            }}
-          />
-          {replaceFileMutation.isPending && (
-            <p className="text-xs text-muted-foreground">Uploading…</p>
-          )}
         </DialogContent>
       </Dialog>
 

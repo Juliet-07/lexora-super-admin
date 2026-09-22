@@ -222,59 +222,8 @@ export async function deleteTemplate(id: string): Promise<void> {
 // mammoth), so it can be previewed and merge-field substituted the
 // same way an authored template is. Only Word documents are
 // accepted — no PDF.
-export interface UploadTemplateMeta {
-  title?: string;
-  category: Category;
-  moduleKey: string;
-  areaKey?: string | null;
-  jurisdiction?: string;
-  description?: string;
-  version?: string;
-  folderId?: string | null;
-}
-
-export async function uploadTemplate(
-  files: File[],
-  meta: UploadTemplateMeta,
-): Promise<ContractTemplate[]> {
-  const form = new FormData();
-  files.forEach((f) => form.append("files", f));
-  // Title only makes sense for a single file — with several, the
-  // backend uses each real filename as that template's title
-  // instead, since one shared title can't apply to multiple.
-  if (files.length === 1 && meta.title) form.append("title", meta.title);
-  form.append("category", meta.category);
-  form.append("moduleKey", meta.moduleKey);
-  if (meta.areaKey) form.append("areaKey", meta.areaKey);
-  if (meta.jurisdiction) form.append("jurisdiction", meta.jurisdiction);
-  if (meta.description) form.append("description", meta.description);
-  if (meta.version) form.append("version", meta.version);
-  if (meta.folderId) form.append("folderId", meta.folderId);
-  const res = await api.post("/super-admin/contract-templates/upload", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  const data = unwrap(res);
-  const list = Array.isArray(data) ? data : [data];
-  return list.map(normalize);
-}
-
-export async function replaceTemplateFile(
-  id: string,
-  file: File,
-): Promise<ContractTemplate> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await api.post(
-    `/super-admin/contract-templates/${id}/replace-file`,
-    form,
-    { headers: { "Content-Type": "multipart/form-data" } },
-  );
-  return normalize(unwrap(res));
-}
-
 // Works for either source type — folder placement doesn't touch a
-// template's content, so this is available even for uploaded
-// templates that update() itself refuses to edit.
+// template's content.
 export async function setTemplateFolder(
   id: string,
   folderId: string | null,
