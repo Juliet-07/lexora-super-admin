@@ -73,7 +73,17 @@ function MergeFieldPicker({
           <ChevronDown className="h-3.5 w-3.5 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-80">
+      <DropdownMenuContent
+        align="start"
+        // Radix caps the content at the space actually available
+        // between the trigger and the viewport edge via this CSS var,
+        // but doesn't apply it as a max-height itself — on a short
+        // screen (or a dialog with little room below the toolbar) the
+        // field list can run past the viewport with nothing to scroll
+        // it. Capping height and adding overflow-y-auto here makes it
+        // scroll instead of clipping / pushing the dialog off-screen.
+        className="w-80 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
+      >
         <DropdownMenuLabel>
           Click to insert — filled in automatically when a contract is drafted
           from this template
