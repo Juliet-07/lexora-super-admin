@@ -14,19 +14,102 @@ import {
   Redo2,
   Code2,
   Minus,
+  Braces,
+  ChevronDown,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import type { MergeFieldDef } from "@/lib/contract-merge-fields";
 
 interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   className?: string;
+  // When provided (and non-empty), the toolbar gains an "Insert
+  // field" dropdown that types a {{token}} at the cursor — so a
+  // template author doesn't have to know the exact spelling from
+  // memory. Omit (or pass []) where no real generation pipeline
+  // consumes these tokens yet.
+  mergeFields?: MergeFieldDef[];
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+// Inserted as plain text, not parsed as HTML — a token like
+// {{scopeOfWork}} has no special HTML characters, but going through
+// insertContent's HTML parser for an arbitrary string is needless
+// risk; this guarantees exactly the literal characters land in the
+// document for the backend's {{token}} regex to match later.
+function insertMergeField(editor: Editor, token: string) {
+  editor
+    .chain()
+    .focus()
+    .insertContent({ type: "text", text: `{{${token}}}` })
+    .run();
+}
+
+function MergeFieldPicker({
+  editor,
+  mergeFields,
+}: {
+  editor: Editor;
+  mergeFields: MergeFieldDef[];
+}) {
+  if (!mergeFields.length) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-1">
+          <Braces className="h-4 w-4" />
+          Insert field
+          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-80">
+        <DropdownMenuLabel>
+          Click to insert — filled in automatically when a contract is drafted
+          from this template
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {mergeFields.map((f) => (
+          <DropdownMenuItem
+            key={f.token}
+            onSelect={(e) => {
+              e.preventDefault(); // keep the editor focused/selection intact
+              insertMergeField(editor, f.token);
+            }}
+            className="flex flex-col items-start gap-0.5 py-2"
+          >
+            <span className="font-mono text-xs text-primary">
+              {"{{"}
+              {f.token}
+              {"}}"}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {f.label} — {f.description}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function Toolbar({
+  editor,
+  mergeFields,
+}: {
+  editor: Editor;
+  mergeFields: MergeFieldDef[];
+}) {
   return (
     <div className="flex flex-wrap items-center gap-1 border-b bg-muted/40 px-2 py-1.5">
       <Toggle
@@ -122,6 +205,12 @@ function Toolbar({ editor }: { editor: Editor }) {
       </Button>
 
       <div className="ml-auto flex items-center gap-1">
+        {mergeFields.length > 0 && (
+          <>
+            <MergeFieldPicker editor={editor} mergeFields={mergeFields} />
+            <Separator orientation="vertical" className="mx-1 h-6" />
+          </>
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -147,7 +236,12 @@ function Toolbar({ editor }: { editor: Editor }) {
   );
 }
 
-export function RichTextEditor({ value, onChange, className }: RichTextEditorProps) {
+export function RichTextEditor({
+  value,
+  onChange,
+  className,
+  mergeFields = [],
+}: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [StarterKit],
     content: value || "",
@@ -175,13 +269,19 @@ export function RichTextEditor({ value, onChange, className }: RichTextEditorPro
 
   return (
     <div className={cn("rounded-lg border bg-card overflow-hidden", className)}>
-      <Toolbar editor={editor} />
+      <Toolbar editor={editor} mergeFields={mergeFields} />
       <EditorContent editor={editor} />
     </div>
   );
 }
 
-export function RichTextView({ html, className }: { html: string; className?: string }) {
+export function RichTextView({
+  html,
+  className,
+}: {
+  html: string;
+  className?: string;
+}) {
   return (
     <div
       className={cn(
@@ -190,7 +290,9 @@ export function RichTextView({ html, className }: { html: string; className?: st
         "prose-li:text-foreground/90 prose-blockquote:border-primary prose-blockquote:text-muted-foreground",
         className,
       )}
-      dangerouslySetInnerHTML={{ __html: html || "<p><em>No content yet.</em></p>" }}
+      dangerouslySetInnerHTML={{
+        __html: html || "<p><em>No content yet.</em></p>",
+      }}
     />
   );
 }

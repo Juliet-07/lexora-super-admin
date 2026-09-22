@@ -85,6 +85,7 @@ import {
   moduleLabel,
   areaLabel,
 } from "@/lib/contract-template";
+import { getMergeFieldsForModule } from "@/lib/contract-merge-fields";
 
 const WORD_ACCEPT =
   ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -997,7 +998,13 @@ export default function ContractTemplates() {
                 <RichTextEditor
                   value={form.content}
                   onChange={(html) => setForm({ ...form, content: html })}
+                  mergeFields={getMergeFieldsForModule(form.moduleKey).fields}
                 />
+                {getMergeFieldsForModule(form.moduleKey).note && (
+                  <p className="text-xs text-muted-foreground">
+                    {getMergeFieldsForModule(form.moduleKey).note}
+                  </p>
+                )}
               </div>
             </div>
           </ScrollArea>
