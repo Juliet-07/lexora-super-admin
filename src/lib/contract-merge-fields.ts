@@ -46,7 +46,7 @@ export const CRM_MERGE_FIELDS: MergeFieldDef[] = [
     token: "scopeOfWork",
     label: "Scope of work",
     description:
-      "Free-text scope of work / deliverables entered on the drafting form — blank if left empty",
+      "Free-text deliverables entered on the drafting form (one per line) — expands into a real numbered list. Insert this once; don't repeat it per item, and don't hand-number the items yourself.",
   },
   {
     token: "tenantCompanyName",
@@ -77,6 +77,51 @@ export const CRM_MERGE_FIELDS: MergeFieldDef[] = [
     token: "todayDate",
     label: "Today's date",
     description: "Today's date",
+  },
+  {
+    token: "tenantCompanyJurisdiction",
+    label: "Tenant company jurisdiction",
+    description:
+      'The firm\'s own jurisdiction of incorporation, as typed on the drafting form (e.g. "the Republic of Rwanda") — blank if left empty',
+  },
+  {
+    token: "clientJurisdiction",
+    label: "Client jurisdiction",
+    description:
+      "The counterparty's jurisdiction of incorporation, as typed on the drafting form",
+  },
+  {
+    token: "leadProfessionalName",
+    label: "Lead professional name",
+    description:
+      "The individual leading this engagement on the firm's side, as typed on the drafting form",
+  },
+  {
+    token: "leadProfessionalTitle",
+    label: "Lead professional title",
+    description: "That person's title/role",
+  },
+  {
+    token: "clientRepresentativeName",
+    label: "Client representative name",
+    description: "The client's authorised representative for this engagement",
+  },
+  {
+    token: "clientRepresentativeTitle",
+    label: "Client representative title",
+    description: "That person's title/role",
+  },
+  {
+    token: "commencementDate",
+    label: "Commencement date",
+    description:
+      "When the engagement starts, as picked on the drafting form — distinct from the effective date (today), since an engagement often starts on a different date than the contract is signed",
+  },
+  {
+    token: "engagementDuration",
+    label: "Engagement duration",
+    description:
+      'Free text describing how long the engagement runs, e.g. "12 months" or "until completion of the audit"',
   },
 ];
 
