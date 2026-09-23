@@ -82,7 +82,10 @@ import {
   moduleLabel,
   areaLabel,
 } from "@/lib/contract-template";
-import { getMergeFieldsForModule } from "@/lib/contract-merge-fields";
+import {
+  getMergeFieldsForModule,
+  findRepeatedSingleUseTokens,
+} from "@/lib/contract-merge-fields";
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -913,6 +916,25 @@ export default function ContractTemplates() {
                     {getMergeFieldsForModule(form.moduleKey).note}
                   </p>
                 )}
+                {findRepeatedSingleUseTokens(form.content).map((offender) => {
+                  const def = getMergeFieldsForModule(
+                    form.moduleKey,
+                  ).fields.find((f) => f.token === offender.token);
+                  return (
+                    <p
+                      key={offender.token}
+                      className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
+                    >
+                      {"{{"}
+                      {offender.token}
+                      {"}}"} ({def?.label ?? offender.token}) appears{" "}
+                      {offender.count} times in this template. It expands into
+                      one whole list, so repeating it duplicates that same full
+                      list into every spot instead of splitting it across them —
+                      use it exactly once.
+                    </p>
+                  );
+                })}
               </div>
             </div>
           </ScrollArea>

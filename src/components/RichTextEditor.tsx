@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -16,9 +16,11 @@ import {
   Minus,
   Braces,
   ChevronDown,
+  Search,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
@@ -63,9 +65,34 @@ function MergeFieldPicker({
   editor: Editor;
   mergeFields: MergeFieldDef[];
 }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  // Matches the token, label, or description — the list has grown
+  // past 20 entries, so a tenant author scanning by eye for e.g.
+  // "jurisdiction" shouldn't have to know it's spelled
+  // "tenantCompanyJurisdiction" to find it.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return mergeFields;
+    return mergeFields.filter(
+      (f) =>
+        f.token.toLowerCase().includes(q) ||
+        f.label.toLowerCase().includes(q) ||
+        f.description.toLowerCase().includes(q),
+    );
+  }, [mergeFields, query]);
+
   if (!mergeFields.length) return null;
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setQuery(""); // start fresh the next time it opens
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button type="button" variant="outline" size="sm" className="gap-1">
           <Braces className="h-4 w-4" />
@@ -80,34 +107,67 @@ function MergeFieldPicker({
         // but doesn't apply it as a max-height itself — on a short
         // screen (or a dialog with little room below the toolbar) the
         // field list can run past the viewport with nothing to scroll
-        // it. Capping height and adding overflow-y-auto here makes it
-        // scroll instead of clipping / pushing the dialog off-screen.
-        className="w-80 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
+        // it. Capping height here and making only the list (below)
+        // scroll keeps the search box pinned in view.
+        className="flex w-80 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] flex-col overflow-hidden p-0"
+        // Radix would otherwise move focus back to the trigger button
+        // when the menu closes after inserting a field — fine, but
+        // combined with autoFocus below it also fights the search
+        // input for focus on open in some browsers. Left to Radix's
+        // default (focus first item) on open, autoFocus here takes
+        // over explicitly.
+        onCloseAutoFocus={(e) => e.preventDefault()}
       >
-        <DropdownMenuLabel>
+        <div className="sticky top-0 z-10 border-b bg-popover p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              // Radix's DropdownMenu listens for printable-character
+              // keydowns anywhere inside it to do its own type-ahead
+              // (jump to the item starting with that letter), which
+              // would otherwise steal every keystroke typed here
+              // instead of letting them reach this input.
+              onKeyDown={(e) => e.stopPropagation()}
+              placeholder="Search fields…"
+              className="h-8 pl-7 text-xs"
+            />
+          </div>
+        </div>
+        <DropdownMenuLabel className="px-2 pt-2 text-xs">
           Click to insert — filled in automatically when a contract is drafted
           from this template
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {mergeFields.map((f) => (
-          <DropdownMenuItem
-            key={f.token}
-            onSelect={(e) => {
-              e.preventDefault(); // keep the editor focused/selection intact
-              insertMergeField(editor, f.token);
-            }}
-            className="flex flex-col items-start gap-0.5 py-2"
-          >
-            <span className="font-mono text-xs text-primary">
-              {"{{"}
-              {f.token}
-              {"}}"}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {f.label} — {f.description}
-            </span>
-          </DropdownMenuItem>
-        ))}
+        <div className="overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+              No fields match &ldquo;{query}&rdquo;
+            </div>
+          ) : (
+            filtered.map((f) => (
+              <DropdownMenuItem
+                key={f.token}
+                onSelect={(e) => {
+                  e.preventDefault(); // keep the editor focused/selection intact
+                  insertMergeField(editor, f.token);
+                }}
+                className="flex flex-col items-start gap-0.5 py-2"
+              >
+                <span className="font-mono text-xs text-primary">
+                  {"{{"}
+                  {f.token}
+                  {"}}"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {f.label} — {f.description}
+                </span>
+              </DropdownMenuItem>
+            ))
+          )}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
