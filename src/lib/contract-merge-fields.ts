@@ -123,6 +123,24 @@ export const CRM_MERGE_FIELDS: MergeFieldDef[] = [
     description:
       'Free text describing how long the engagement runs, e.g. "12 months" or "until completion of the audit"',
   },
+  {
+    token: "tenantRegisteredAddress",
+    label: "Tenant registered address",
+    description:
+      "The firm's own registered office address, as typed on the drafting form",
+  },
+  {
+    token: "clientRegisteredAddress",
+    label: "Client registered address",
+    description:
+      "The counterparty's registered office address, as typed on the drafting form",
+  },
+  {
+    token: "serviceCategory",
+    label: "Service category",
+    description:
+      'The category/type of professional service being provided (e.g. "company secretarial", "tax advisory"), as typed on the drafting form',
+  },
 ];
 
 // Which modules' published templates are actually consumed by a real
