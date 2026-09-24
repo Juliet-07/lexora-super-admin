@@ -18,6 +18,8 @@ import TenantDetail from "./pages/TenantDetails";
 import KnowledgeLibrary from "./pages/KnowledgeLibrary";
 import KnowledgeEntryEditor from "./pages/KnowledgeEntryEditor";
 import ContractTemplates from "./pages/ContractTemplates";
+import PolicyTemplates from "./pages/PolicyTemplates";
+import PolicyTemplateEditor from "./pages/PolicyTemplateEditor";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +53,18 @@ const App = () => (
                     <Route
                       path="/contract-templates"
                       element={<ContractTemplates />}
+                    />
+                    <Route
+                      path="/policy-templates"
+                      element={<PolicyTemplates />}
+                    />
+                    <Route
+                      path="/policy-templates/new"
+                      element={<PolicyTemplateEditor />}
+                    />
+                    <Route
+                      path="/policy-templates/:id"
+                      element={<PolicyTemplateEditor />}
                     />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/transactions" element={<Transactions />} />

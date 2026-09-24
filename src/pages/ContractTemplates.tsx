@@ -1099,7 +1099,7 @@ export default function ContractTemplates() {
               </div>
             </div>
 
-            <ScrollArea className="max-h-64">
+            <ScrollArea className="max-h-64 overflow-y-auto">
               <div className="space-y-2 pr-3">
                 {folders.map((f) => (
                   <div

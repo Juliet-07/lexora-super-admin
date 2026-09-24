@@ -10,6 +10,7 @@ import {
   Boxes,
   BookOpen,
   FileText,
+  ShieldCheck,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -36,6 +37,7 @@ const mainItems = [
   { title: "Tenants", url: "/tenants", icon: Building2 },
   { title: "Knowledge Library", url: "/knowledge", icon: BookOpen },
   { title: "Templates", url: "/contract-templates", icon: FileText },
+  { title: "Policy Templates", url: "/policy-templates", icon: ShieldCheck },
 ];
 
 const systemItems = [
