@@ -189,9 +189,9 @@ export default function PolicyTemplates() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="gradient-primary rounded-lg p-2.5 shadow-glow">
+          {/* <div className="gradient-primary rounded-lg p-2.5 shadow-glow">
             <ShieldCheck className="h-5 w-5 text-primary-foreground" />
-          </div>
+          </div> */}
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Policy Templates

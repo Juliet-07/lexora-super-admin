@@ -351,10 +351,10 @@ export default function ContractTemplates() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Templates
+           Contract Templates
           </h1>
           <p className="text-sm text-muted-foreground">
-            Publish reusable templates per module — CRM, HR and GRC — for
+            Publish reusable templates per module — KYC, CRM, HR and GRC — for
             tenants to use in their workspaces.
           </p>
         </div>

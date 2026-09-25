@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Building2,
@@ -10,10 +11,15 @@ import {
   Boxes,
   BookOpen,
   FileText,
-  ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +29,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarHeader,
   SidebarFooter,
   useSidebar,
@@ -36,14 +45,17 @@ const mainItems = [
   { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Tenants", url: "/tenants", icon: Building2 },
   { title: "Knowledge Library", url: "/knowledge", icon: BookOpen },
-  { title: "Templates", url: "/contract-templates", icon: FileText },
-  { title: "Policy Templates", url: "/policy-templates", icon: ShieldCheck },
+];
+
+const templateItems = [
+  { title: "Contract template", url: "/contract-templates" },
+  { title: "Policy template", url: "/policy-templates" },
 ];
 
 const systemItems = [
   // { title: "Audit Logs", url: "/audit-logs", icon: ScrollText },
-  { title: "Transactions", url: "/transactions", icon: Receipt },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Transactions", url: "/transactions", icon: Receipt },
 ];
 
 type profileData = {
@@ -60,6 +72,12 @@ export function AdminSidebar() {
     path === "/"
       ? location.pathname === "/"
       : location.pathname.startsWith(path);
+
+  const templatesActive = templateItems.some((item) => isActive(item.url));
+  const [templatesOpen, setTemplatesOpen] = useState(templatesActive);
+  useEffect(() => {
+    if (templatesActive) setTemplatesOpen(true);
+  }, [templatesActive]);
 
   const { data, isLoading, isError } = useQuery<profileData>({
     queryKey: ["superadmin-profile"],
@@ -103,6 +121,42 @@ export function AdminSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+
+              <Collapsible
+                open={templatesOpen}
+                onOpenChange={setTemplatesOpen}
+                className="group/collapsible"
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton isActive={templatesActive}>
+                      <FileText className="h-4 w-4" />
+                      {!collapsed && (
+                        <>
+                          <span>Templates</span>
+                          <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                        </>
+                      )}
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {templateItems.map((item) => (
+                        <SidebarMenuSubItem key={item.title}>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={isActive(item.url)}
+                          >
+                            <NavLink to={item.url}>
+                              <span>{item.title}</span>
+                            </NavLink>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
