@@ -42,8 +42,8 @@ const mainItems = [
 
 const systemItems = [
   // { title: "Audit Logs", url: "/audit-logs", icon: ScrollText },
-  { title: "Settings", url: "/settings", icon: Settings },
   { title: "Transactions", url: "/transactions", icon: Receipt },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 type profileData = {

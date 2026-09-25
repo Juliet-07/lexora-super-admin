@@ -11,7 +11,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col">
           <header className="h-14 flex items-center justify-between border-b px-4">
             <SidebarTrigger />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 hidden">
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="h-4 w-4" />
                 <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-destructive border-2 border-card" />
