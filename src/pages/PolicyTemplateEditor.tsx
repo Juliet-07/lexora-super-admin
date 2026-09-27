@@ -42,6 +42,8 @@ import { useToast } from "@/hooks/use-toast";
 import { RichTextEditor, RichTextView } from "@/components/RichTextEditor";
 import {
   POLICY_CATEGORIES,
+  GOVERNANCE_CODE_CATEGORIES,
+  POLICY_TEMPLATE_APPLIES_TO,
   createPolicyTemplate,
   emptyPolicyTemplate,
   emptySection,
@@ -50,6 +52,7 @@ import {
   updatePolicyTemplate,
   type PolicyTemplateInput,
   type PolicyTemplateStatus,
+  type PolicyTemplateAppliesTo,
 } from "@/lib/policy-templates";
 
 export default function PolicyTemplateEditor() {
@@ -91,6 +94,7 @@ export default function PolicyTemplateEditor() {
         sections: existing.sections.length
           ? existing.sections
           : [{ ...emptySection }],
+        appliesTo: existing.appliesTo,
       });
       setHydrated(true);
     }
@@ -102,6 +106,27 @@ export default function PolicyTemplateEditor() {
   ) => {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [key]: "" }));
+  };
+
+  const categoryOptions: readonly string[] =
+    form.appliesTo === "Governance Code"
+      ? GOVERNANCE_CODE_CATEGORIES
+      : POLICY_CATEGORIES;
+
+  const setAppliesTo = (value: PolicyTemplateAppliesTo) => {
+    const nextOptions =
+      value === "Governance Code"
+        ? GOVERNANCE_CODE_CATEGORIES
+        : POLICY_CATEGORIES;
+    setForm((f) => ({
+      ...f,
+      appliesTo: value,
+      // The two category lists don't overlap, so a category valid
+      // for the old appliesTo is never valid for the new one.
+      category: (nextOptions as readonly string[]).includes(f.category)
+        ? f.category
+        : nextOptions[0],
+    }));
   };
 
   const setSection = (
@@ -425,6 +450,29 @@ export default function PolicyTemplateEditor() {
                     )}
                   </div>
                   <div className="space-y-2">
+                    <Label>Applies to *</Label>
+                    <Select
+                      value={form.appliesTo}
+                      onValueChange={(v) =>
+                        setAppliesTo(v as PolicyTemplateAppliesTo)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {POLICY_TEMPLATE_APPLIES_TO.map((a) => (
+                          <SelectItem key={a} value={a}>
+                            {a === "Policy" ? "Policies" : "Governance Codes"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Which tenant-side page this template is selectable from.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <Label>Category *</Label>
                     <Select
                       value={form.category}
@@ -434,7 +482,7 @@ export default function PolicyTemplateEditor() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {POLICY_CATEGORIES.map((c) => (
+                        {categoryOptions.map((c) => (
                           <SelectItem key={c} value={c}>
                             {c}
                           </SelectItem>
@@ -471,6 +519,11 @@ export default function PolicyTemplateEditor() {
                 </h2>
                 <div className="mt-2 flex items-center gap-2">
                   <Badge variant="outline">{form.category}</Badge>
+                  <Badge variant="secondary">
+                    {form.appliesTo === "Governance Code"
+                      ? "Governance Codes"
+                      : "Policies"}
+                  </Badge>
                 </div>
                 {form.description && (
                   <p className="mt-3 text-sm text-muted-foreground">

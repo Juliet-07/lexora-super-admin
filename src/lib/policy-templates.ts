@@ -23,8 +23,29 @@ export const POLICY_CATEGORIES = [
   "Operations and Finance",
 ] as const;
 
+// Mirrors lexora-engine's GovernanceCodeCategory — used when a
+// template's appliesTo is "Governance Code" instead of the policy
+// category list above.
+export const GOVERNANCE_CODE_CATEGORIES = [
+  "Code of Conduct",
+  "Governance Charter",
+  "Board Charter",
+  "Ethics",
+  "Other",
+] as const;
+
 export type PolicyCategory = (typeof POLICY_CATEGORIES)[number];
 export type PolicyTemplateStatus = "Draft" | "Published";
+
+// Which tenant-side feature this template is selectable from — the
+// same catalog now backs both Policies and Governance Codes, since a
+// template is just reusable title+sections content either way.
+export const POLICY_TEMPLATE_APPLIES_TO = [
+  "Policy",
+  "Governance Code",
+] as const;
+export type PolicyTemplateAppliesTo =
+  (typeof POLICY_TEMPLATE_APPLIES_TO)[number];
 
 export interface PolicyTemplateSection {
   title: string;
@@ -38,6 +59,7 @@ export interface PolicyTemplate {
   description: string;
   sections: PolicyTemplateSection[];
   status: PolicyTemplateStatus;
+  appliesTo: PolicyTemplateAppliesTo;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
@@ -55,6 +77,7 @@ export const emptyPolicyTemplate: PolicyTemplateInput = {
   category: POLICY_CATEGORIES[0],
   description: "",
   sections: [{ ...emptySection }],
+  appliesTo: "Policy",
 };
 
 // Same defensive unwrap pattern as the rest of this app (see
@@ -80,6 +103,9 @@ function normalize(raw: any): PolicyTemplate {
         }))
       : [],
     status: raw.status,
+    // Legacy documents predate this field — every template on record
+    // before this round was authored for Policies.
+    appliesTo: raw.appliesTo || "Policy",
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     publishedAt: raw.publishedAt || undefined,

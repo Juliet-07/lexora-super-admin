@@ -50,11 +50,15 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   POLICY_CATEGORIES,
+  GOVERNANCE_CODE_CATEGORIES,
+  POLICY_TEMPLATE_APPLIES_TO,
   deletePolicyTemplate,
   fetchPolicyTemplates,
   setPolicyTemplateStatus,
   type PolicyTemplate,
 } from "@/lib/policy-templates";
+
+const ALL_CATEGORIES = [...POLICY_CATEGORIES, ...GOVERNANCE_CODE_CATEGORIES];
 
 const formatDate = (value?: string) =>
   value
@@ -84,6 +88,7 @@ export default function PolicyTemplates() {
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [appliesTo, setAppliesTo] = useState("all");
   const [status, setStatusFilter] = useState("all");
   const [sort, setSort] = useState<SortKey>("updated");
   const [pendingDelete, setPendingDelete] = useState<PolicyTemplate | null>(
@@ -131,8 +136,11 @@ export default function PolicyTemplates() {
         t.title.toLowerCase().includes(q) ||
         t.description.toLowerCase().includes(q);
       const matchesCategory = category === "all" || t.category === category;
+      const matchesAppliesTo = appliesTo === "all" || t.appliesTo === appliesTo;
       const matchesStatus = status === "all" || t.status === status;
-      return matchesSearch && matchesCategory && matchesStatus;
+      return (
+        matchesSearch && matchesCategory && matchesAppliesTo && matchesStatus
+      );
     });
 
     return [...list].sort((a, b) => {
@@ -144,7 +152,7 @@ export default function PolicyTemplates() {
         );
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  }, [templates, search, category, status, sort]);
+  }, [templates, search, category, appliesTo, status, sort]);
 
   const published = templates.filter((t) => t.status === "Published").length;
 
@@ -220,13 +228,27 @@ export default function PolicyTemplates() {
             />
           </div>
 
+          <Select value={appliesTo} onValueChange={setAppliesTo}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Applies to" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Policies & Codes</SelectItem>
+              {POLICY_TEMPLATE_APPLIES_TO.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {a === "Policy" ? "Policies" : "Governance Codes"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-[220px]">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All categories</SelectItem>
-              {POLICY_CATEGORIES.map((c) => (
+              {ALL_CATEGORIES.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
                 </SelectItem>
@@ -264,7 +286,8 @@ export default function PolicyTemplates() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[40%]">Template</TableHead>
+                <TableHead className="w-[36%]">Template</TableHead>
+                <TableHead>Applies to</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Sections</TableHead>
                 <TableHead>Status</TableHead>
@@ -284,6 +307,13 @@ export default function PolicyTemplates() {
                         {template.description}
                       </p>
                     )}
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Badge variant="secondary">
+                      {template.appliesTo === "Governance Code"
+                        ? "Governance Codes"
+                        : "Policies"}
+                    </Badge>
                   </TableCell>
                   <TableCell className="align-top">
                     <Badge variant="outline">{template.category}</Badge>
@@ -369,7 +399,7 @@ export default function PolicyTemplates() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-16 text-center">
+                  <TableCell colSpan={7} className="py-16 text-center">
                     <p className="text-sm text-muted-foreground">
                       No templates match your filters.
                     </p>
