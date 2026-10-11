@@ -143,18 +143,95 @@ export const CRM_MERGE_FIELDS: MergeFieldDef[] = [
   },
 ];
 
+// Mirrors AVAILABLE_MERGE_FIELDS in the backend (lexora-engine:
+// src/modules/hr/schemas/contract-template.schema.ts) by hand, same
+// caveat as CRM_MERGE_FIELDS above — keep the two in sync manually.
+export const HR_MERGE_FIELDS: MergeFieldDef[] = [
+  {
+    token: "employeeName",
+    label: "Employee name",
+    description: "The employee's (or candidate's) full name",
+  },
+  {
+    token: "jobTitle",
+    label: "Job title",
+    description:
+      "The employee's job title, or the role a candidate applied for",
+  },
+  {
+    token: "startDate",
+    label: "Start date",
+    description: "The employee's start date — blank for a candidate",
+  },
+  {
+    token: "salary",
+    label: "Salary",
+    description: "The employee's salary amount — blank for a candidate",
+  },
+  {
+    token: "salaryCurrency",
+    label: "Salary currency",
+    description: "The employee's salary currency",
+  },
+  {
+    token: "noticePeriod",
+    label: "Notice period",
+    description: "Not currently tracked on the employee record — stays blank",
+  },
+  {
+    token: "workerCategory",
+    label: "Worker category",
+    description: '"employee" or "consultant"',
+  },
+  {
+    token: "tenantCompanyName",
+    label: "Tenant company name",
+    description: "This tenant's own registered business name",
+  },
+  {
+    token: "todayDate",
+    label: "Today's date",
+    description: "Today's date",
+  },
+  {
+    token: "reason",
+    label: "Reason",
+    description:
+      "For letters — e.g. the grounds for a suspension, as entered on the generate form",
+  },
+  {
+    token: "effectiveDate",
+    label: "Effective date",
+    description:
+      "For letters — e.g. a suspension's start date, as entered on the generate form",
+  },
+  {
+    token: "endDate",
+    label: "End date",
+    description:
+      "For letters — e.g. a suspension's end date, as entered on the generate form",
+  },
+  {
+    token: "scopeOfWork",
+    label: "Scope of work",
+    description:
+      "Free-text deliverables entered on the generate form (one per line) — expands into a real numbered list. Insert this once; don't repeat it per item. Mainly relevant for a consultant/contractor template.",
+  },
+];
+
 // Which modules' published templates are actually consumed by a real
 // generation pipeline today, and with which vocabulary. CRM and
 // KYC/AML both funnel through the exact same backend pipeline
 // (ContractService.generateFromTemplate — vendor, plain CRM client,
 // and KYC onboarding contracts are all the same code path under the
 // hood, just tagged with a different origin), so they share one
-// vocabulary. HR and GRC are NOT wired to a template published from
-// here yet — HR generates from its own, separately-authored
-// tenant-side templates (Tenant app → HR → Contract templates, which
-// already has its own token picker), and GRC deal contracts don't
-// use a template at all yet. Surface that honestly instead of
-// showing a token picker that looks like it works but doesn't.
+// vocabulary. HR has its own, separate pipeline and vocabulary
+// (hr/services/contract.service.ts) but IS wired to templates
+// published here under module "hr" — a tenant no longer authors
+// employment-contract templates themselves, they pick from the
+// published HR library. GRC deal contracts don't use a template at
+// all yet — surfaced honestly instead of showing a token picker that
+// looks like it works but doesn't.
 export function getMergeFieldsForModule(moduleKey: string | null | undefined): {
   fields: MergeFieldDef[];
   note: string | null;
@@ -164,10 +241,7 @@ export function getMergeFieldsForModule(moduleKey: string | null | undefined): {
     case "kyc_aml":
       return { fields: CRM_MERGE_FIELDS, note: null };
     case "hr":
-      return {
-        fields: [],
-        note: "HR contracts are generated from templates authored directly in the tenant app (HR → Contract templates), which has its own field picker — a template published here under HR isn't currently used by HR's contract generation.",
-      };
+      return { fields: HR_MERGE_FIELDS, note: null };
     case "grc":
       return {
         fields: [],

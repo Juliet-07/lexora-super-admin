@@ -203,6 +203,8 @@ export default function ContractTemplates() {
       content: t.content,
       version: t.version,
       folderId: t.folderId ?? null,
+      hrWorkerCategory: t.hrWorkerCategory ?? null,
+      hrRequiresSignature: t.hrRequiresSignature ?? true,
     });
     setEditorOpen(true);
   };
@@ -351,7 +353,7 @@ export default function ContractTemplates() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-           Contract Templates
+            Contract Templates
           </h1>
           <p className="text-sm text-muted-foreground">
             Publish reusable templates per module — KYC, CRM, HR and GRC — for
@@ -903,6 +905,65 @@ export default function ContractTemplates() {
                     placeholder="Short summary tenants will see in the template list"
                   />
                 </div>
+                {form.moduleKey === "hr" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Applies to</Label>
+                      <Select
+                        value={form.hrWorkerCategory ?? "either"}
+                        onValueChange={(v) =>
+                          setForm({
+                            ...form,
+                            hrWorkerCategory:
+                              v === "either"
+                                ? null
+                                : (v as "employee" | "consultant"),
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="either">
+                            Either (employees and consultants)
+                          </SelectItem>
+                          <SelectItem value="employee">
+                            Employees only
+                          </SelectItem>
+                          <SelectItem value="consultant">
+                            Consultants only
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Requires recipient signature?</Label>
+                      <Select
+                        value={form.hrRequiresSignature ? "yes" : "no"}
+                        onValueChange={(v) =>
+                          setForm({
+                            ...form,
+                            hrRequiresSignature: v === "yes",
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="yes">
+                            Yes — a contract both parties sign
+                          </SelectItem>
+                          <SelectItem value="no">
+                            No — a one-way letter the tenant issues (warnings,
+                            suspension, etc.)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Template body</Label>
@@ -994,6 +1055,20 @@ export default function ContractTemplates() {
                         <FileUp className="h-3 w-3" /> From uploaded Word
                         document
                       </Badge>
+                    )}
+                    {preview.moduleKey === "hr" && (
+                      <>
+                        <Badge variant="outline" className="capitalize">
+                          {preview.hrWorkerCategory
+                            ? `${preview.hrWorkerCategory}s only`
+                            : "Employees & consultants"}
+                        </Badge>
+                        {preview.hrRequiresSignature === false && (
+                          <Badge variant="outline">
+                            One-way letter — no recipient signature
+                          </Badge>
+                        )}
+                      </>
                     )}
                   </div>
                   <h2 className="text-2xl font-bold leading-tight text-foreground">

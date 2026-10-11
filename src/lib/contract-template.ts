@@ -86,6 +86,8 @@ export type Category = (typeof CATEGORIES)[number];
 export type TemplateStatus = "Draft" | "Published";
 export type SourceType = "authored" | "uploaded";
 
+export type HrWorkerCategory = "employee" | "consultant";
+
 export interface ContractTemplate {
   id: string;
   title: string;
@@ -107,6 +109,12 @@ export interface ContractTemplate {
   folderId?: string | null;
   createdAt: string;
   updatedAt: string;
+  // ── HR-pipeline-specific — meaningful only when moduleKey is "hr" ──
+  // Which worker category this template applies to; null means either.
+  hrWorkerCategory: HrWorkerCategory | null;
+  // False for a one-way letter (only the tenant signs, e.g. a
+  // suspension letter) instead of a two-party contract.
+  hrRequiresSignature: boolean;
 }
 
 export type TemplateInput = Omit<
@@ -131,6 +139,8 @@ export const emptyTemplate: TemplateInput = {
   content: "",
   version: "1.0",
   folderId: null,
+  hrWorkerCategory: null,
+  hrRequiresSignature: true,
 };
 
 const unwrap = (res: any) =>
@@ -174,6 +184,8 @@ function normalize(raw: any): ContractTemplate {
     folderId: raw.folderId ? String(raw.folderId) : null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    hrWorkerCategory: raw.hrWorkerCategory ?? null,
+    hrRequiresSignature: raw.hrRequiresSignature ?? true,
   };
 }
 
