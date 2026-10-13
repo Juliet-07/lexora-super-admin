@@ -57,6 +57,7 @@ import {
   fetchCampaigns,
   fetchCampaign,
   fetchSubscriberStats,
+  fetchSubscribers,
   createCampaign,
   updateCampaign,
   deleteCampaign,
@@ -66,6 +67,7 @@ import {
   sendCampaignNow,
   type Campaign,
   type Template,
+  type Subscriber,
 } from "@/lib/newsletter";
 
 const formatDate = (value?: string) =>
@@ -831,6 +833,10 @@ export default function NewsletterPage() {
     undefined,
   );
   const [pendingDelete, setPendingDelete] = useState<Campaign | null>(null);
+  const [subscriberSearch, setSubscriberSearch] = useState("");
+  const [subscriberStatusFilter, setSubscriberStatusFilter] = useState<
+    "all" | "Active" | "Unsubscribed"
+  >("all");
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["newsletter-campaigns"],
@@ -843,6 +849,48 @@ export default function NewsletterPage() {
     queryFn: fetchSubscriberStats,
     staleTime: 60 * 1000,
   });
+
+  const { data: subscribers = [], isLoading: subscribersLoading } = useQuery({
+    queryKey: ["newsletter-subscribers"],
+    queryFn: fetchSubscribers,
+    staleTime: 30 * 1000,
+  });
+
+  const filteredSubscribers = subscribers.filter((s) => {
+    if (subscriberStatusFilter !== "all" && s.status !== subscriberStatusFilter)
+      return false;
+    if (
+      subscriberSearch &&
+      !s.email.toLowerCase().includes(subscriberSearch.toLowerCase())
+    )
+      return false;
+    return true;
+  });
+
+  const exportSubscribersCsv = () => {
+    const header = "Email,Status,Source,Subscribed at,Unsubscribed at";
+    const rows = filteredSubscribers.map((s) =>
+      [
+        s.email,
+        s.status,
+        s.source,
+        new Date(s.createdAt).toISOString(),
+        s.unsubscribedAt ? new Date(s.unsubscribedAt).toISOString() : "",
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `newsletter-subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["newsletter-campaigns"] });
@@ -940,6 +988,111 @@ export default function NewsletterPage() {
       )}
 
       <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <div>
+            <CardTitle className="text-base">Subscribers</CardTitle>
+            <CardDescription>
+              Everyone who signed up via the public website's "Subscribe to
+              newsletter" form.
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              placeholder="Search by email…"
+              value={subscriberSearch}
+              onChange={(e) => setSubscriberSearch(e.target.value)}
+              className="h-9 w-48"
+            />
+            <Select
+              value={subscriberStatusFilter}
+              onValueChange={(v) => setSubscriberStatusFilter(v as any)}
+            >
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Unsubscribed">Unsubscribed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportSubscribersCsv}
+              disabled={!filteredSubscribers.length}
+            >
+              Export CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {subscribersLoading ? (
+            <div className="flex items-center justify-center gap-3 py-16 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">Loading subscribers…</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[36%]">Email</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Subscribed</TableHead>
+                  <TableHead>Unsubscribed</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSubscribers.map((s: Subscriber) => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium">{s.email}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          s.status === "Active"
+                            ? "bg-success/15 text-success border-success/30"
+                            : "bg-muted text-muted-foreground"
+                        }
+                      >
+                        {s.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.source}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(s.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.unsubscribedAt
+                        ? new Date(s.unsubscribedAt).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredSubscribers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-16 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        {subscribers.length === 0
+                          ? "No subscribers yet."
+                          : "No subscribers match this search/filter."}
+                      </p>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Campaigns</CardTitle>
+        </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center gap-3 py-16 text-muted-foreground">
