@@ -17,6 +17,9 @@ import NotFound from "./pages/NotFound";
 import TenantDetail from "./pages/TenantDetails";
 import KnowledgeLibrary from "./pages/KnowledgeLibrary";
 import KnowledgeEntryEditor from "./pages/KnowledgeEntryEditor";
+import InsightLibrary from "./pages/InsightLibrary";
+import InsightEditor from "./pages/InsightEditor";
+import NewsletterPage from "./pages/Newsletter";
 import ContractTemplates from "./pages/ContractTemplates";
 import PolicyTemplates from "./pages/PolicyTemplates";
 import PolicyTemplateEditor from "./pages/PolicyTemplateEditor";
@@ -51,6 +54,14 @@ const App = () => (
                       path="/knowledge/:id"
                       element={<KnowledgeEntryEditor />}
                     />
+                    <Route path="/insights" element={<InsightLibrary />} />
+                    <Route path="/insights/new" element={<InsightEditor />} />
+                    <Route path="/insights/:id" element={<InsightEditor />} />
+                    <Route path="/newsletter" element={<NewsletterPage />} />
+                    <Route
+                      path="/contact-requests"
+                      element={<DemoRequests />}
+                    />
                     <Route
                       path="/contract-templates"
                       element={<ContractTemplates />}
@@ -70,7 +81,6 @@ const App = () => (
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/audit-logs" element={<AuditLogs />} />
-                    <Route path="/contact-requests" element={<DemoRequests />} />
                     <Route path="/settings" element={<SystemSettings />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>

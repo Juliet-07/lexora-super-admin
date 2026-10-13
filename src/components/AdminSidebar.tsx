@@ -13,6 +13,8 @@ import {
   FileText,
   ChevronRight,
   Inbox,
+  Newspaper,
+  Mail,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -46,6 +48,8 @@ const mainItems = [
   { title: "Modules", url: "/modules", icon: Boxes },
   { title: "Tenants", url: "/tenants", icon: Building2 },
   { title: "Knowledge Library", url: "/knowledge", icon: BookOpen },
+  { title: "Insights", url: "/insights", icon: Newspaper },
+  { title: "Newsletter", url: "/newsletter", icon: Mail },
   { title: "Contact Requests", url: "/contact-requests", icon: Inbox },
 ];
 
