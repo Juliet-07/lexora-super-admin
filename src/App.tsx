@@ -20,6 +20,7 @@ import KnowledgeEntryEditor from "./pages/KnowledgeEntryEditor";
 import ContractTemplates from "./pages/ContractTemplates";
 import PolicyTemplates from "./pages/PolicyTemplates";
 import PolicyTemplateEditor from "./pages/PolicyTemplateEditor";
+import DemoRequests from "./pages/DemoRequests";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,7 @@ const App = () => (
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/audit-logs" element={<AuditLogs />} />
+                    <Route path="/contact-requests" element={<DemoRequests />} />
                     <Route path="/settings" element={<SystemSettings />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
