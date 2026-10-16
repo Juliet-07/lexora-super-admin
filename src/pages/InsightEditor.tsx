@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import {
   CATEGORIES,
   createInsight,
@@ -353,20 +354,15 @@ export default function InsightEditor() {
                 <CardHeader>
                   <CardTitle className="text-base">Cover image</CardTitle>
                   <CardDescription>
-                    Image URL shown behind the article's category icon on the
-                    Insights grid. Leave blank to use the category's default
-                    icon tile.
+                    Shown behind the article's category icon on the Insights
+                    grid. Leave blank to use the category's default icon tile.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <Label htmlFor="coverImage">Cover image URL</Label>
-                  <Input
-                    id="coverImage"
-                    type="url"
-                    maxLength={500}
+                <CardContent>
+                  <ImageUploadField
+                    label="Cover image"
                     value={form.coverImage}
-                    onChange={(e) => set("coverImage", e.target.value)}
-                    placeholder="https://…"
+                    onChange={(url) => set("coverImage", url)}
                   />
                 </CardContent>
               </Card>

@@ -50,6 +50,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import {
   TEMPLATES,
   TEMPLATE_LABELS,
@@ -279,6 +280,12 @@ function TemplateFields({
             onChange={(e) => set("fineText", e.target.value)}
           />
         </div>
+        <ImageUploadField
+          label="Image / GIF (optional)"
+          value={data.imageUrl ?? ""}
+          onChange={(url) => set("imageUrl", url)}
+          helpText="Shown below the logo, above the heading."
+        />
       </div>
     );
   }
@@ -337,6 +344,12 @@ function TemplateFields({
             onChange={(v) => set("blogItems", v)}
           />
         </div>
+        <ImageUploadField
+          label="Image / GIF (optional)"
+          value={data.imageUrl ?? ""}
+          onChange={(url) => set("imageUrl", url)}
+          helpText="Shown below the heading band, above the intro text."
+        />
       </div>
     );
   }
@@ -413,6 +426,12 @@ function TemplateFields({
             onChange={(v) => set("moreItems", v)}
           />
         </div>
+        <ImageUploadField
+          label="Image / GIF (optional)"
+          value={data.imageUrl ?? ""}
+          onChange={(url) => set("imageUrl", url)}
+          helpText="Shown below the hero band, above the heading."
+        />
       </div>
     );
   }
@@ -515,6 +534,12 @@ function TemplateFields({
           />
         </div>
       </div>
+      <ImageUploadField
+        label="Image / GIF (optional)"
+        value={data.imageUrl ?? ""}
+        onChange={(url) => set("imageUrl", url)}
+        helpText="Shown below the date/heading band, above the body text."
+      />
     </div>
   );
 }

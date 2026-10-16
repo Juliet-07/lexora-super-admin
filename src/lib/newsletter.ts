@@ -181,6 +181,8 @@ export function emptyTemplateData(template: Template): Record<string, any> {
         ctaLabel: "Read the full advisory",
         ctaUrl: "",
         fineText: "",
+        imageUrl: "",
+        imageAlt: "",
       };
     case "QuarterlyRoundup":
       return {
@@ -191,6 +193,8 @@ export function emptyTemplateData(template: Template): Record<string, any> {
           { num: "01", heading: "", body: "", linkLabel: "", linkUrl: "" },
         ],
         blogItems: [],
+        imageUrl: "",
+        imageAlt: "",
       };
     case "ArticleSpotlight":
       return {
@@ -202,6 +206,8 @@ export function emptyTemplateData(template: Template): Record<string, any> {
         ctaLabel: "Read the full article",
         ctaUrl: "",
         moreItems: [],
+        imageUrl: "",
+        imageAlt: "",
       };
     case "EventInvite":
       return {
@@ -220,6 +226,8 @@ export function emptyTemplateData(template: Template): Record<string, any> {
         ctaUrl: "",
         calendarLabel: "Add to calendar",
         calendarUrl: "",
+        imageUrl: "",
+        imageAlt: "",
       };
   }
 }
