@@ -303,6 +303,7 @@ export default function InsightEditor() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <RichTextEditor
+                    images
                     value={form.content}
                     onChange={(html) => set("content", html)}
                   />

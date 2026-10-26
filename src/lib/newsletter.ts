@@ -231,3 +231,19 @@ export function emptyTemplateData(template: Template): Record<string, any> {
       };
   }
 }
+
+// The newsletter exactly as subscribers will receive it, rendered
+// server-side from the (possibly unsaved) form. Nothing is saved or
+// sent.
+export async function previewCampaign(input: {
+  previewText?: string;
+  template: Template;
+  templateData: Record<string, any>;
+}): Promise<{ html: string; missingFields: string[] }> {
+  const res = await api.post(
+    "/super-admin/newsletter/campaigns/preview",
+    input,
+  );
+  const d = unwrap(res);
+  return { html: d?.html ?? "", missingFields: d?.missingFields ?? [] };
+}

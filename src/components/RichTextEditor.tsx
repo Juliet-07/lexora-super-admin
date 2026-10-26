@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import {
+  EditorContent,
+  Node,
+  mergeAttributes,
+  useEditor,
+  type Editor,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Bold,
@@ -17,6 +23,7 @@ import {
   Braces,
   ChevronDown,
   Search,
+  ImagePlus,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
@@ -30,6 +37,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import { cn } from "@/lib/utils";
 import type { MergeFieldDef } from "@/lib/contract-merge-fields";
 
@@ -43,6 +59,145 @@ interface RichTextEditorProps {
   // memory. Omit (or pass []) where no real generation pipeline
   // consumes these tokens yet.
   mergeFields?: MergeFieldDef[];
+  // Adds an "Insert" group (image, quote, divider) to the toolbar —
+  // for long-form public content such as Insights.
+  images?: boolean;
+}
+
+// A block-level picture with an optional caption. Stored as plain
+// <figure><img><figcaption> HTML, so it renders as-is on the public
+// site and in email — no editor-specific markup.
+const ImageBlock = Node.create({
+  name: "image",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      src: { default: null },
+      alt: { default: "" },
+      caption: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "figure",
+        priority: 60,
+        getAttrs: (el) => {
+          const img = (el as HTMLElement).querySelector("img");
+          if (!img) return false;
+          return {
+            src: img.getAttribute("src"),
+            alt: img.getAttribute("alt") ?? "",
+            caption:
+              (el as HTMLElement).querySelector("figcaption")?.textContent ??
+              "",
+          };
+        },
+      },
+      {
+        tag: "img[src]",
+        getAttrs: (el) => ({
+          src: (el as HTMLElement).getAttribute("src"),
+          alt: (el as HTMLElement).getAttribute("alt") ?? "",
+        }),
+      },
+    ];
+  },
+  renderHTML({ node }) {
+    const img = [
+      "img",
+      mergeAttributes({ src: node.attrs.src, alt: node.attrs.alt || "" }),
+    ];
+    return node.attrs.caption
+      ? ["figure", {}, img, ["figcaption", {}, node.attrs.caption]]
+      : ["figure", {}, img];
+  },
+});
+
+function InsertImageDialog({
+  editor,
+  open,
+  onOpenChange,
+}: {
+  editor: Editor;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [alt, setAlt] = useState("");
+  const [caption, setCaption] = useState("");
+  const reset = () => {
+    setUrl("");
+    setAlt("");
+    setCaption("");
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) reset();
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Insert image</DialogTitle>
+          <DialogDescription>
+            Upload a picture or GIF — it is placed where your cursor is.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <ImageUploadField label="Image" value={url} onChange={setUrl} />
+          <div className="space-y-1">
+            <label className="text-sm font-medium">
+              Alt text (describes the image)
+            </label>
+            <Input value={alt} onChange={(e) => setAlt(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Caption (optional)</label>
+            <Input
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={!/^https?:\/\//i.test(url.trim())}
+            onClick={() => {
+              editor
+                .chain()
+                .focus()
+                .insertContent({
+                  type: "image",
+                  attrs: {
+                    src: url.trim(),
+                    alt: alt.trim(),
+                    caption: caption.trim(),
+                  },
+                })
+                .run();
+              onOpenChange(false);
+              reset();
+            }}
+          >
+            Insert
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // Inserted as plain text, not parsed as HTML — a token like
@@ -176,10 +331,13 @@ function MergeFieldPicker({
 function Toolbar({
   editor,
   mergeFields,
+  images,
 }: {
   editor: Editor;
   mergeFields: MergeFieldDef[];
+  images?: boolean;
 }) {
+  const [imageOpen, setImageOpen] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-1 border-b bg-muted/40 px-2 py-1.5">
       <Toggle
@@ -274,6 +432,47 @@ function Toolbar({
         <Minus className="h-4 w-4" />
       </Button>
 
+      {images && (
+        <>
+          <Separator orientation="vertical" className="mx-1 h-6" />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => setImageOpen(true)}
+          >
+            <ImagePlus className="h-4 w-4" />
+            Image
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          >
+            <Quote className="h-4 w-4" />
+            Insert quote
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          >
+            <Minus className="h-4 w-4" />
+            Section divider
+          </Button>
+          <InsertImageDialog
+            editor={editor}
+            open={imageOpen}
+            onOpenChange={setImageOpen}
+          />
+        </>
+      )}
+
       <div className="ml-auto flex items-center gap-1">
         {mergeFields.length > 0 && (
           <>
@@ -311,9 +510,10 @@ export function RichTextEditor({
   onChange,
   className,
   mergeFields = [],
+  images = false,
 }: RichTextEditorProps) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: images ? [StarterKit, ImageBlock] : [StarterKit],
     content: value || "",
     editorProps: {
       attributes: {
@@ -321,6 +521,7 @@ export function RichTextEditor({
           "prose prose-invert prose-sm sm:prose-base max-w-none px-4 py-4 focus:outline-none",
           "prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground",
           "prose-li:text-foreground/90 prose-blockquote:border-primary prose-blockquote:text-muted-foreground",
+          "prose-img:rounded-lg prose-img:mx-auto prose-hr:my-8",
           "min-h-[420px]",
         ),
       },
@@ -339,7 +540,7 @@ export function RichTextEditor({
 
   return (
     <div className={cn("rounded-lg border bg-card overflow-hidden", className)}>
-      <Toolbar editor={editor} mergeFields={mergeFields} />
+      <Toolbar editor={editor} mergeFields={mergeFields} images={images} />
       <EditorContent editor={editor} />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Mail,
@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ImageUploadField } from "@/components/ImageUploadField";
+import { ContentBlocksEditor } from "@/components/ContentBlocksEditor";
 import {
   TEMPLATES,
   TEMPLATE_LABELS,
@@ -69,6 +70,7 @@ import {
   type Campaign,
   type Template,
   type Subscriber,
+  previewCampaign,
 } from "@/lib/newsletter";
 
 const formatDate = (value?: string) =>
@@ -544,6 +546,84 @@ function TemplateFields({
   );
 }
 
+// Live preview — the server renders the real email (same renderer
+// that builds the sent one), debounced as the author types.
+const REQUIRED_LABEL: Record<string, string> = {
+  heading: "Heading",
+  alertText: "Alert text",
+  intro: "Intro",
+  sections: "At least one section",
+  excerpt: "Excerpt",
+  ctaUrl: "Button URL",
+  day: "Day",
+  month: "Month",
+};
+
+function NewsletterPreview({
+  template,
+  data,
+  previewText,
+}: {
+  template: Template;
+  data: Record<string, any>;
+  previewText: string;
+}) {
+  const [debounced, setDebounced] = useState({ template, data, previewText });
+  useEffect(() => {
+    const t = setTimeout(
+      () => setDebounced({ template, data, previewText }),
+      500,
+    );
+    return () => clearTimeout(t);
+  }, [template, data, previewText]);
+
+  const q = useQuery({
+    queryKey: ["newsletter-preview", JSON.stringify(debounced)],
+    queryFn: () =>
+      previewCampaign({
+        template: debounced.template,
+        templateData: debounced.data,
+        previewText: debounced.previewText,
+      }),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+
+  return (
+    <div className="space-y-2">
+      {q.data?.missingFields?.length ? (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+          Still needed before this can be sent:{" "}
+          {q.data.missingFields.map((f) => REQUIRED_LABEL[f] ?? f).join(", ")}.
+        </p>
+      ) : null}
+      <div className="relative overflow-hidden rounded-md border bg-muted/30">
+        {q.isFetching && (
+          <Loader2 className="absolute right-2 top-2 z-10 h-4 w-4 animate-spin text-muted-foreground" />
+        )}
+        {q.isError ? (
+          <p className="p-6 text-center text-sm text-muted-foreground">
+            Couldn&apos;t render the preview.
+          </p>
+        ) : (
+          <iframe
+            title="Newsletter preview"
+            // Sandboxed — rendered email HTML never gets scripts or
+            // same-origin access to the app.
+            sandbox=""
+            srcDoc={q.data?.html ?? ""}
+            className="h-[640px] w-full bg-white"
+          />
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        This is how subscribers will see it. The unsubscribe link here is
+        inactive.
+      </p>
+    </div>
+  );
+}
+
 function CampaignComposer({
   campaign,
   onClose,
@@ -565,6 +645,7 @@ function CampaignComposer({
   const [testEmail, setTestEmail] = useState("");
   const [scheduleAt, setScheduleAt] = useState("");
   const [savedId, setSavedId] = useState<string | undefined>(campaign?.id);
+  const [tab, setTab] = useState<"edit" | "preview">("edit");
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["newsletter-campaigns"] });
@@ -730,14 +811,50 @@ function CampaignComposer({
                 Fields marked * are required before this can send.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <fieldset disabled={!!locked}>
-                <TemplateFields
+            <CardContent className="space-y-4">
+              <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
+                {(["edit", "preview"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setTab(k)}
+                    className={`flex-1 rounded px-3 py-1.5 font-medium ${
+                      tab === k
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {k === "edit" ? "Edit content" : "Preview"}
+                  </button>
+                ))}
+              </div>
+              {tab === "edit" ? (
+                <fieldset disabled={!!locked} className="space-y-6">
+                  <TemplateFields
+                    template={template}
+                    data={data}
+                    onChange={setData}
+                  />
+                  <div className="border-t pt-4">
+                    <ContentBlocksEditor
+                      blocks={
+                        Array.isArray(data.contentBlocks)
+                          ? data.contentBlocks
+                          : []
+                      }
+                      onChange={(contentBlocks) =>
+                        setData({ ...data, contentBlocks })
+                      }
+                    />
+                  </div>
+                </fieldset>
+              ) : (
+                <NewsletterPreview
                   template={template}
                   data={data}
-                  onChange={setData}
+                  previewText={previewText}
                 />
-              </fieldset>
+              )}
             </CardContent>
           </Card>
         </div>
