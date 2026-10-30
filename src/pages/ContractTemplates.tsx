@@ -82,10 +82,7 @@ import {
   moduleLabel,
   areaLabel,
 } from "@/lib/contract-template";
-import {
-  getMergeFieldsForModule,
-  findRepeatedSingleUseTokens,
-} from "@/lib/contract-merge-fields";
+import { TemplateEditorWorkspace } from "@/components/contracts/TemplateEditorWorkspace";
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -761,262 +758,21 @@ export default function ContractTemplates() {
         </Card>
       </div>
 
-      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingId ? "Edit template" : "New template"}
-            </DialogTitle>
-            <DialogDescription>
-              Published templates become available to every tenant.
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-[65vh] pr-4">
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={form.title}
-                    onChange={(e) =>
-                      setForm({ ...form, title: e.target.value })
-                    }
-                    placeholder="e.g. Standard Employment Agreement"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Module</Label>
-                  <Select
-                    value={form.moduleKey}
-                    onValueChange={(v) =>
-                      setForm({
-                        ...form,
-                        moduleKey: v,
-                        areaKey: getModule(v)?.areas[0]?.key ?? null,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TEMPLATE_MODULES.map((m) => (
-                        <SelectItem key={m.key} value={m.key}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Area</Label>
-                  <Select
-                    value={form.areaKey ?? ""}
-                    onValueChange={(v) => setForm({ ...form, areaKey: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an area" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(getModule(form.moduleKey)?.areas ?? []).map((a) => (
-                        <SelectItem key={a.key} value={a.key}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select
-                    value={form.category}
-                    onValueChange={(v) =>
-                      setForm({ ...form, category: v as Category })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="jurisdiction">Jurisdiction</Label>
-                  <Input
-                    id="jurisdiction"
-                    value={form.jurisdiction}
-                    onChange={(e) =>
-                      setForm({ ...form, jurisdiction: e.target.value })
-                    }
-                    placeholder="e.g. Rwanda"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="version">Version</Label>
-                  <Input
-                    id="version"
-                    value={form.version}
-                    onChange={(e) =>
-                      setForm({ ...form, version: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Folder</Label>
-                  <Select
-                    value={form.folderId ?? "uncategorized"}
-                    onValueChange={(v) =>
-                      setForm({
-                        ...form,
-                        folderId: v === "uncategorized" ? null : v,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="uncategorized">
-                        Uncategorized
-                      </SelectItem>
-                      {folders.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={form.description}
-                    onChange={(e) =>
-                      setForm({ ...form, description: e.target.value })
-                    }
-                    placeholder="Short summary tenants will see in the template list"
-                  />
-                </div>
-                {form.moduleKey === "hr" && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Applies to</Label>
-                      <Select
-                        value={form.hrWorkerCategory ?? "either"}
-                        onValueChange={(v) =>
-                          setForm({
-                            ...form,
-                            hrWorkerCategory:
-                              v === "either"
-                                ? null
-                                : (v as "employee" | "consultant"),
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="either">
-                            Either (employees and consultants)
-                          </SelectItem>
-                          <SelectItem value="employee">
-                            Employees only
-                          </SelectItem>
-                          <SelectItem value="consultant">
-                            Consultants only
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Requires recipient signature?</Label>
-                      <Select
-                        value={form.hrRequiresSignature ? "yes" : "no"}
-                        onValueChange={(v) =>
-                          setForm({
-                            ...form,
-                            hrRequiresSignature: v === "yes",
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yes">
-                            Yes — a contract both parties sign
-                          </SelectItem>
-                          <SelectItem value="no">
-                            No — a one-way letter the tenant issues (warnings,
-                            suspension, etc.)
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Template body</Label>
-                <RichTextEditor
-                  value={form.content}
-                  onChange={(html) => setForm({ ...form, content: html })}
-                  mergeFields={getMergeFieldsForModule(form.moduleKey).fields}
-                />
-                {getMergeFieldsForModule(form.moduleKey).note && (
-                  <p className="text-xs text-muted-foreground">
-                    {getMergeFieldsForModule(form.moduleKey).note}
-                  </p>
-                )}
-                {findRepeatedSingleUseTokens(form.content).map((offender) => {
-                  const def = getMergeFieldsForModule(
-                    form.moduleKey,
-                  ).fields.find((f) => f.token === offender.token);
-                  return (
-                    <p
-                      key={offender.token}
-                      className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
-                    >
-                      {"{{"}
-                      {offender.token}
-                      {"}}"} ({def?.label ?? offender.token}) appears{" "}
-                      {offender.count} times in this template. It expands into
-                      one whole list, so repeating it duplicates that same full
-                      list into every spot instead of splitting it across them —
-                      use it exactly once.
-                    </p>
-                  );
-                })}
-              </div>
-            </div>
-          </ScrollArea>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={saveMutation.isPending}
-              onClick={() => save("Draft")}
-            >
-              Save draft
-            </Button>
-            <Button
-              className="gradient-primary"
-              disabled={saveMutation.isPending}
-              onClick={() => save("Published")}
-            >
-              <Send className="mr-2 h-4 w-4" /> Publish to tenants
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TemplateEditorWorkspace
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        editing={!!editingId}
+        currentStatus={
+          editingId
+            ? templates.find((t) => t.id === editingId)?.status
+            : undefined
+        }
+        form={form}
+        setForm={setForm}
+        folders={folders}
+        saving={saveMutation.isPending}
+        onSave={save}
+      />
 
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         <DialogContent className="max-w-3xl">

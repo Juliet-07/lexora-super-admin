@@ -56,8 +56,10 @@ export const TEMPLATE_MODULES: TemplateModule[] = [
   {
     key: "grc",
     name: "GRC",
-    description: "Governance, risk and compliance templates",
+    description:
+      "Governance, risk and compliance templates — including the contracts generated inside the Deal pipeline",
     areas: [
+      { key: "deals", name: "Deal contracts" },
       { key: "compliance", name: "Compliance" },
       { key: "risk", name: "Risk & Audit" },
     ],

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   EditorContent,
+  Extension,
   Node,
   mergeAttributes,
   useEditor,
   type Editor,
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
   Bold,
   Italic,
@@ -62,7 +65,63 @@ interface RichTextEditorProps {
   // Adds an "Insert" group (image, quote, divider) to the toolbar —
   // for long-form public content such as Insights.
   images?: boolean;
+  // When given, every {{token}} typed or inserted in the body is shown as
+  // a chip — blue when it is in this set, amber when it isn't (a typo, or
+  // a field this kind of template can't use).
+  highlightTokens?: Set<string>;
+  // Hands the editor to the parent once it exists (null when it goes
+  // away) — lets a side panel insert at the cursor.
+  onEditorReady?: (editor: Editor | null) => void;
+  // Fill the parent's height and scroll the document inside, instead of
+  // growing with the content.
+  fill?: boolean;
 }
+
+// Shows each {{token}} as a chip. Purely visual — it adds a class around
+// the characters and never changes the stored HTML, so a template saves
+// exactly as typed. The set of known tokens lives in storage so the
+// parent can change it (when the field list finishes loading) without
+// rebuilding the editor.
+const MergeTokenHighlight = Extension.create({
+  name: "mergeTokenHighlight",
+  addStorage() {
+    return { known: undefined as Set<string> | undefined };
+  },
+  addProseMirrorPlugins() {
+    const storage = this.storage;
+    return [
+      new Plugin({
+        key: new PluginKey("mergeTokenHighlight"),
+        props: {
+          decorations(state) {
+            const known = storage.known;
+            if (!known) return DecorationSet.empty;
+            const decorations: Decoration[] = [];
+            state.doc.descendants((node, pos) => {
+              if (!node.isText || !node.text) return;
+              for (const m of node.text.matchAll(/\{\{(\w+)\}\}/g)) {
+                const from = pos + (m.index ?? 0);
+                decorations.push(
+                  Decoration.inline(from, from + m[0].length, {
+                    class: known.has(m[1])
+                      ? "merge-token"
+                      : "merge-token merge-token-unknown",
+                    title: known.has(m[1])
+                      ? undefined
+                      : "Not a known merge field — it will stay as {{" +
+                        m[1] +
+                        "}} in generated contracts",
+                  }),
+                );
+              }
+            });
+            return DecorationSet.create(state.doc, decorations);
+          },
+        },
+      }),
+    ];
+  },
+});
 
 // A block-level picture with an optional caption. Stored as plain
 // <figure><img><figcaption> HTML, so it renders as-is on the public
@@ -511,9 +570,16 @@ export function RichTextEditor({
   className,
   mergeFields = [],
   images = false,
+  highlightTokens,
+  onEditorReady,
+  fill = false,
 }: RichTextEditorProps) {
   const editor = useEditor({
-    extensions: images ? [StarterKit, ImageBlock] : [StarterKit],
+    extensions: [
+      StarterKit,
+      ...(images ? [ImageBlock] : []),
+      MergeTokenHighlight,
+    ],
     content: value || "",
     editorProps: {
       attributes: {
@@ -522,7 +588,7 @@ export function RichTextEditor({
           "prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground",
           "prose-li:text-foreground/90 prose-blockquote:border-primary prose-blockquote:text-muted-foreground",
           "prose-img:rounded-lg prose-img:mx-auto prose-hr:my-8",
-          "min-h-[420px]",
+          fill ? "min-h-full" : "min-h-[420px]",
         ),
       },
     },
@@ -536,12 +602,48 @@ export function RichTextEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
+  useEffect(() => {
+    if (!editor) return;
+    onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
+
+  // Keep the chips in step with the field list (it arrives after the
+  // editor does, and changes with the template's module).
+  useEffect(() => {
+    if (!editor) return;
+    (
+      editor.storage as unknown as Record<string, { known?: Set<string> }>
+    ).mergeTokenHighlight.known = highlightTokens;
+    editor.view.dispatch(editor.state.tr.setMeta("mergeTokenHighlight", true));
+  }, [editor, highlightTokens]);
+
   if (!editor) return null;
 
   return (
-    <div className={cn("rounded-lg border bg-card overflow-hidden", className)}>
+    <div
+      className={cn(
+        "rounded-lg border bg-card overflow-hidden",
+        fill && "flex h-full min-h-0 flex-col",
+        className,
+      )}
+    >
       <Toolbar editor={editor} mergeFields={mergeFields} images={images} />
-      <EditorContent editor={editor} />
+      {fill ? (
+        <div
+          className="min-h-0 flex-1 cursor-text overflow-y-auto"
+          onClick={(e) => {
+            // Clicking the empty page below the text still puts the cursor
+            // at the end instead of doing nothing.
+            if (e.target === e.currentTarget) editor.commands.focus("end");
+          }}
+        >
+          <EditorContent editor={editor} className="min-h-full" />
+        </div>
+      ) : (
+        <EditorContent editor={editor} />
+      )}
     </div>
   );
 }

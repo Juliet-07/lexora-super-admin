@@ -1,17 +1,14 @@
 // ─────────────────────────────────────────────────────────────
-// Merge-field vocabulary for the template body editor's "Insert
-// field" picker. A template author shouldn't have to know the
-// exact {{token}} spelling from memory — this is what lets them
-// insert one with a click instead.
+// Merge-field vocabulary for the template editor's fields panel.
 //
-// This list mirrors CONTRACT_MERGE_FIELDS in the backend
-// (lexora-engine: src/modules/crm/tools/schemas/contract.schema.ts)
-// exactly. There's no way for this app to import that backend
-// constant directly, so if a field is ever added/removed/renamed
-// there, update CRM_MERGE_FIELDS below to match by hand — the two
-// lists silently drifting apart is exactly the bug this file exists
-// to prevent for a template author.
+// The engine owns the vocabulary (src/common/utils/contract-merge-registry.ts)
+// and serves it at GET /super-admin/contract-templates/merge-fields, so a
+// field the product owner adds there appears in the editor with no change
+// here. CRM_MERGE_FIELDS / HR_MERGE_FIELDS below are only an offline
+// fallback for when that endpoint can't be reached (for instance an older
+// engine build) — they are no longer the source of truth.
 // ─────────────────────────────────────────────────────────────
+import { api } from "./api";
 
 export interface MergeFieldDef {
   token: string;
@@ -243,10 +240,9 @@ export function getMergeFieldsForModule(moduleKey: string | null | undefined): {
     case "hr":
       return { fields: HR_MERGE_FIELDS, note: null };
     case "grc":
-      return {
-        fields: [],
-        note: "GRC deal contracts aren't generated from a published template yet — they're currently built directly from the deal's own terms. Merge fields for GRC are coming in a later update.",
-      };
+      // Deal contracts (area "Deal contracts") are generated from published
+      // templates; the full list comes from the registry endpoint.
+      return { fields: CRM_MERGE_FIELDS, note: null };
     default:
       return { fields: [], note: null };
   }
@@ -260,7 +256,11 @@ export function getMergeFieldsForModule(moduleKey: string | null | undefined): {
 // per occurrence." Flagging this in the editor (see
 // findRepeatedSingleUseTokens below) catches it before a tenant sees
 // a document with the same list repeated several times over.
-export const SINGLE_USE_TOKENS = ["scopeOfWork"];
+export const SINGLE_USE_TOKENS = [
+  "scopeOfWork",
+  "partiesList",
+  "signatoriesList",
+];
 
 // Scans a template's HTML body for any SINGLE_USE_TOKENS token that
 // appears more than once, returning the offending tokens with their
@@ -280,4 +280,119 @@ export function findRepeatedSingleUseTokens(
     }
   }
   return offenders;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Registry client
+// ─────────────────────────────────────────────────────────────
+
+export type MergeFieldInputKind =
+  | "text"
+  | "textarea"
+  | "date"
+  | "currency"
+  | "number";
+
+export interface RegistryField extends MergeFieldDef {
+  /** Heading the field is listed under in the panel. */
+  group: string;
+  input: MergeFieldInputKind;
+  /** Sample value, used by "Preview with sample data". */
+  example: string;
+  /** Expands into a whole list — should appear in a template once. */
+  singleUse: boolean;
+}
+
+export const MERGE_GROUP_ORDER = [
+  "Contract",
+  "Parties",
+  "Deal",
+  "Engagement",
+  "Commercial",
+  "Dates",
+  "Term sheet",
+  "Signing",
+  "Person",
+  "Letter",
+];
+
+export const orderGroups = (groups: string[]): string[] =>
+  Array.from(new Set(groups)).sort((a, b) => {
+    const ia = MERGE_GROUP_ORDER.indexOf(a);
+    const ib = MERGE_GROUP_ORDER.indexOf(b);
+    return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
+  });
+
+const unwrapList = (res: { data?: unknown }): Record<string, unknown>[] => {
+  const d = res?.data as { data?: unknown } | unknown[] | undefined;
+  const rows = Array.isArray(d) ? d : d && Array.isArray(d.data) ? d.data : [];
+  return rows as Record<string, unknown>[];
+};
+
+export async function fetchMergeFieldRegistry(
+  moduleKey: string,
+): Promise<RegistryField[]> {
+  const res = await api.get("/super-admin/contract-templates/merge-fields", {
+    params: { moduleKey },
+  });
+  return unwrapList(res).map((f) => ({
+    token: String(f.token),
+    label: String(f.label ?? f.token),
+    description: String(f.description ?? ""),
+    group: String(f.group ?? "Other"),
+    input: (f.input ?? "text") as MergeFieldInputKind,
+    example: String(f.example ?? ""),
+    singleUse: !!f.singleUse,
+  }));
+}
+
+/** The offline fallback, shaped like registry fields. */
+export function fallbackRegistry(moduleKey: string): RegistryField[] {
+  return getMergeFieldsForModule(moduleKey).fields.map((f) => ({
+    ...f,
+    group: "Fields",
+    input: "text" as const,
+    example: f.label,
+    singleUse: SINGLE_USE_TOKENS.includes(f.token),
+  }));
+}
+
+/** Every {{token}} in a template body with how many times it appears. */
+export function countTokens(html: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const m of (html ?? "").matchAll(/\{\{(\w+)\}\}/g)) {
+    counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+  }
+  return counts;
+}
+
+const escapeHtml = (v: string) =>
+  v
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+/**
+ * The template body with each known {{token}} swapped for its sample value
+ * (highlighted) and each unknown one flagged — what "Preview with sample
+ * data" shows. List fields get one numbered line per row.
+ */
+export function renderWithSamples(
+  html: string,
+  fields: RegistryField[],
+): string {
+  const byToken = new Map(fields.map((f) => [f.token, f]));
+  return (html ?? "").replace(/\{\{(\w+)\}\}/g, (_m, token: string) => {
+    const f = byToken.get(token);
+    if (!f) {
+      return `<mark class="tpl-unknown" title="Not a known field">{{${token}}}</mark>`;
+    }
+    const lines = (f.example || f.label).split("\n").filter(Boolean);
+    const body =
+      f.singleUse && lines.length > 1
+        ? lines.map((l, i) => `${i + 1}. ${escapeHtml(l)}`).join("<br>")
+        : lines.map(escapeHtml).join("<br>");
+    return `<mark class="tpl-sample" title="${escapeHtml(f.label)}">${body}</mark>`;
+  });
 }
