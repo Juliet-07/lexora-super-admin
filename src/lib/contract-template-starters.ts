@@ -4,7 +4,8 @@
 
 export const DEAL_CONTRACT_STARTER = `
 <h2>{{title}}</h2>
-<p>This agreement is made on {{signingDate}} between the following parties:</p>
+<p>Reference {{contractReference}}. This agreement is made on {{effectiveDate}} between {{partyAName}} of {{partyAAddress}} ("Party A") and {{partyBName}} of {{partyBAddress}} ("Party B").</p>
+<p>The parties to the transaction are:</p>
 <p>{{partiesList}}</p>
 <h3>1. The transaction</h3>
 <p>This agreement relates to {{dealName}} ({{dealType}}) between {{clientName}} and {{dealCounterpartyName}}.</p>
@@ -21,9 +22,11 @@ export const DEAL_CONTRACT_STARTER = `
 <p>The target completion date is {{targetCloseDate}} and the longstop date is {{longstopDate}}.</p>
 <p>{{termSheetTimeline}}</p>
 <h3>6. Governing law</h3>
-<p>This agreement is governed by the laws of {{dealJurisdiction}}.</p>
+<p>This agreement is governed by the laws of {{governingLaw}}.</p>
 <h3>Signatures</h3>
 <p>Signed at {{signingVenue}} on {{signingDate}}.</p>
+<p>For {{partyAName}}: {{partyARepresentative}}, {{partyARepresentativeTitle}}</p>
+<p>For {{partyBName}}: {{partyBRepresentative}}, {{partyBRepresentativeTitle}}</p>
 <p>{{signatoriesList}}</p>
 `.trim();
 

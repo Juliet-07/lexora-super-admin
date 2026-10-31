@@ -110,6 +110,8 @@ export function TemplateEditorWorkspace({
   }, [open]);
   const dirty = open && JSON.stringify(form) !== baseline.current;
 
+  const counts = useMemo(() => countTokens(form.content), [form.content]);
+
   // ── Fields (from the engine's registry) ─────────────────────
   const registryQuery = useQuery({
     queryKey: ["mergeFieldRegistry", form.moduleKey],
@@ -128,8 +130,9 @@ export function TemplateEditorWorkspace({
     [offline, registryQuery.data, form.moduleKey],
   );
   // ... and the ones offered for this template's area (GRC deal contracts
-  // are offered the deal fields, not the governance ones).
-  const fields = useMemo(
+  // are offered the deal fields, not the governance ones). Older names kept
+  // for existing templates stay valid but are not listed.
+  const inArea = useMemo(
     () =>
       allFields.filter(
         (f) =>
@@ -137,6 +140,19 @@ export function TemplateEditorWorkspace({
       ),
     [allFields, form.areaKey],
   );
+  const fields = useMemo(() => inArea.filter((f) => !f.hidden), [inArea]);
+  // Older names this template still uses, and what to use instead.
+  const legacy = useMemo(() => {
+    const labels = new Map(allFields.map((f) => [f.token, f.label]));
+    return inArea
+      .filter((f) => f.hidden && f.aliasOf && counts.has(f.token))
+      .map((f) => ({
+        token: f.token,
+        count: counts.get(f.token) ?? 0,
+        useToken: f.aliasOf as string,
+        useLabel: labels.get(f.aliasOf as string) ?? (f.aliasOf as string),
+      }));
+  }, [inArea, allFields, counts]);
 
   // Every field in EVERY module. The product owner's list files a field
   // under one module, but a template in another may use it (a deal contract
@@ -160,8 +176,7 @@ export function TemplateEditorWorkspace({
     [indexQuery.data, allFields],
   );
   const known = useMemo(() => new Set(index.map((f) => f.token)), [index]);
-  const offered = useMemo(() => new Set(fields.map((f) => f.token)), [fields]);
-  const counts = useMemo(() => countTokens(form.content), [form.content]);
+  const offered = useMemo(() => new Set(inArea.map((f) => f.token)), [inArea]);
   const checking = registryQuery.isLoading || indexQuery.isLoading;
   const unknown = useMemo(
     () =>
@@ -495,6 +510,7 @@ export function TemplateEditorWorkspace({
                     counts={counts}
                     unknown={unknown}
                     elsewhere={elsewhere}
+                    legacy={legacy}
                     index={index}
                     onFind={findToken}
                     onReplace={replaceToken}

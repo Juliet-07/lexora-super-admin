@@ -305,18 +305,36 @@ export interface RegistryField extends MergeFieldDef {
   areas: string[];
   /** The system has no value for it — it's completed on the contract. */
   clause: boolean;
+  /** Offered in every module (title, parties, dates, our company, value). */
+  common: boolean;
+  /** An older name kept so existing templates still fill; not listed. */
+  hidden: boolean;
+  /** For a hidden older name: the field to use instead. */
+  aliasOf?: string;
 }
 
-export const MERGE_GROUP_ORDER = [
-  "Contract",
+/** Groups of the common fields, in the order the panel shows them. */
+export const COMMON_GROUPS = [
+  "Agreement",
   "Parties",
-  "Deal",
-  "Engagement",
-  "Commercial",
+  "Our company",
   "Dates",
+  "Value",
+];
+
+export const MERGE_GROUP_ORDER = [
+  // Common to every module — shown first, in their own block
+  ...COMMON_GROUPS,
+  // Module-specific
+  "Engagement",
+  "Deal",
+  "Deal parties",
+  "Deal dates",
   "Term sheet",
   "Signing",
   "Person",
+  "Employment",
+  "Pay",
   "Letter",
   // Clause-level fields from the product owner's list
   "Deal & transaction clauses",
@@ -357,6 +375,9 @@ export async function fetchMergeFieldRegistry(
     singleUse: !!f.singleUse,
     areas: Array.isArray(f.areas) ? (f.areas as string[]) : [],
     clause: f.source === "clause",
+    common: !!f.common,
+    hidden: !!f.hidden,
+    aliasOf: typeof f.aliasOf === "string" ? f.aliasOf : undefined,
   }));
 }
 
@@ -365,6 +386,9 @@ export interface FieldIndexEntry {
   token: string;
   label: string;
   group: string;
+  /** An older name — still valid, but not worth suggesting. */
+  hidden?: boolean;
+  aliasOf?: string;
 }
 
 /** Every field in every module — to tell "valid, from elsewhere" from "not a field". */
@@ -376,6 +400,8 @@ export async function fetchMergeFieldIndex(): Promise<FieldIndexEntry[]> {
     token: String(f.token),
     label: String(f.label ?? f.token),
     group: String(f.group ?? ""),
+    hidden: f.hidden ? true : undefined,
+    aliasOf: typeof f.aliasOf === "string" ? f.aliasOf : undefined,
   }));
 }
 
@@ -399,7 +425,7 @@ export function suggestFields(
   const a = new Set(words(token));
   const lower = token.toLowerCase();
   return index
-    .filter((f) => f.token !== token)
+    .filter((f) => f.token !== token && !f.hidden)
     .map((f) => {
       const b = new Set(words(f.token));
       const shared = [...a].filter((w) => b.has(w)).length;
@@ -415,17 +441,131 @@ export function suggestFields(
     .map((x) => x.f);
 }
 
+// The common fields, kept here too so the editor still offers them when the
+// engine can't be reached. The engine's registry
+// (contract-merge-common-fields.ts) is the source of truth.
+type Seed = [
+  token: string,
+  label: string,
+  group: string,
+  example: string,
+  input?: MergeFieldInputKind,
+];
+const COMMON_SEEDS: Seed[] = [
+  ["title", "Contract title", "Agreement", "Share Purchase Agreement"],
+  ["contractReference", "Contract reference", "Agreement", "CON-2026-014"],
+  ["governingLaw", "Governing law", "Agreement", "Rwanda"],
+  [
+    "scopeOfWork",
+    "Scope of work",
+    "Agreement",
+    "Draft the documents",
+    "textarea",
+  ],
+  ["partyAName", "Party A — name", "Parties", "Wekraft Ltd"],
+  ["partyAAddress", "Party A — address", "Parties", "KG 7 Ave, Kigali"],
+  ["partyARepresentative", "Party A — signatory", "Parties", "Julie Ohankwere"],
+  ["partyARepresentativeTitle", "Party A — signatory title", "Parties", "CTO"],
+  ["partyBName", "Party B — name", "Parties", "Roselyn Designs Ltd"],
+  ["partyBAddress", "Party B — address", "Parties", "Plot 12, Kigali"],
+  ["partyBEmail", "Party B — email", "Parties", "legal@roselyn.example"],
+  ["partyBRepresentative", "Party B — signatory", "Parties", "Aline Uwase"],
+  ["partyBRepresentativeTitle", "Party B — signatory title", "Parties", "MD"],
+  ["tenantCompanyName", "Our company name", "Our company", "Wekraft Ltd"],
+  [
+    "tenantRegisteredAddress",
+    "Our registered address",
+    "Our company",
+    "KG 7 Ave, Kigali",
+  ],
+  ["tenantCompanyJurisdiction", "Our jurisdiction", "Our company", "Rwanda"],
+  [
+    "tenantCompanyRegistrationNumber",
+    "Our registration number",
+    "Our company",
+    "123456789",
+  ],
+  ["tenantCompanyTaxId", "Our tax ID", "Our company", "102345678"],
+  [
+    "tenantCompanyEmail",
+    "Our contact email",
+    "Our company",
+    "legal@wekraft.example",
+  ],
+  [
+    "tenantCompanyPhone",
+    "Our contact phone",
+    "Our company",
+    "+250 788 000 000",
+  ],
+  ["effectiveDate", "Effective date", "Dates", "2026-11-02", "date"],
+  ["expiryDate", "Expiry date", "Dates", "2027-11-02", "date"],
+  ["todayDate", "Today's date", "Dates", "2026-11-02", "date"],
+  ["contractValue", "Contract value", "Value", "250000", "number"],
+  ["contractCurrency", "Contract currency", "Value", "USD", "currency"],
+];
+const ALIAS_SEEDS: [string, string][] = [
+  ["counterpartyName", "partyBName"],
+  ["recipientName", "partyBName"],
+  ["recipientEmail", "partyBEmail"],
+  ["clientRegisteredAddress", "partyBAddress"],
+  ["clientRepresentativeName", "partyBRepresentative"],
+  ["clientRepresentativeTitle", "partyBRepresentativeTitle"],
+  ["leadProfessionalName", "partyARepresentative"],
+  ["leadProfessionalTitle", "partyARepresentativeTitle"],
+];
+
+const base = (): Omit<
+  RegistryField,
+  "token" | "label" | "description" | "group" | "input" | "example"
+> => ({
+  singleUse: false,
+  areas: [],
+  clause: false,
+  common: false,
+  hidden: false,
+});
+
 /** The offline fallback, shaped like registry fields. */
 export function fallbackRegistry(moduleKey: string): RegistryField[] {
-  return getMergeFieldsForModule(moduleKey).fields.map((f) => ({
-    ...f,
-    group: "Fields",
+  const common: RegistryField[] = COMMON_SEEDS.map(
+    ([token, label, group, example, input]) => ({
+      ...base(),
+      token,
+      label,
+      description: "",
+      group,
+      input: input ?? "text",
+      example,
+      singleUse: SINGLE_USE_TOKENS.includes(token),
+      common: true,
+    }),
+  );
+  const labels = new Map(COMMON_SEEDS.map((c) => [c[0], c[1]]));
+  const aliases: RegistryField[] = ALIAS_SEEDS.map(([token, of]) => ({
+    ...base(),
+    token,
+    label: token,
+    description: `Older name for ${labels.get(of)}`,
+    group: "Parties",
     input: "text" as const,
-    example: f.label,
-    singleUse: SINGLE_USE_TOKENS.includes(f.token),
-    areas: [],
-    clause: false,
+    example: "",
+    common: true,
+    hidden: true,
+    aliasOf: of,
   }));
+  const taken = new Set([...common, ...aliases].map((f) => f.token));
+  const specific: RegistryField[] = getMergeFieldsForModule(moduleKey)
+    .fields.filter((f) => !taken.has(f.token))
+    .map((f) => ({
+      ...base(),
+      ...f,
+      group: "Other fields",
+      input: "text" as const,
+      example: f.label,
+      singleUse: SINGLE_USE_TOKENS.includes(f.token),
+    }));
+  return [...common, ...aliases, ...specific];
 }
 
 /** Every {{token}} in a template body with how many times it appears. */
