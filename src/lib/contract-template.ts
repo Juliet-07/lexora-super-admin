@@ -101,7 +101,12 @@ export interface ContractTemplate {
   jurisdiction?: string;
   description: string;
   sourceType: SourceType;
-  content: string; // HTML — authored directly, or extracted from an uploaded Word doc
+  content: string; // HTML — the BODY of the agreement (authored directly, or extracted from a Word doc)
+  /** Cover page (HTML, merge fields allowed). Empty = no cover page. */
+  coverPage: string;
+  /** Add a contents page, built from the body's headings. */
+  tocEnabled: boolean;
+  tocTitle: string;
   fileUrl?: string;
   fileName?: string;
   fileMimeType?: string;
@@ -139,6 +144,9 @@ export const emptyTemplate: TemplateInput = {
   jurisdiction: "",
   description: "",
   content: "",
+  coverPage: "",
+  tocEnabled: true,
+  tocTitle: "Table of Contents",
   version: "1.0",
   folderId: null,
   hrWorkerCategory: null,
@@ -178,6 +186,9 @@ function normalize(raw: any): ContractTemplate {
     description: raw.description,
     sourceType: raw.sourceType ?? "authored",
     content: raw.content ?? "",
+    coverPage: raw.coverPage ?? "",
+    tocEnabled: raw.tocEnabled ?? false,
+    tocTitle: raw.tocTitle || "Table of Contents",
     fileUrl: raw.fileUrl || undefined,
     fileName: raw.fileName || undefined,
     fileMimeType: raw.fileMimeType || undefined,

@@ -82,6 +82,7 @@ import {
   moduleLabel,
   areaLabel,
 } from "@/lib/contract-template";
+import { TemplatePagesPreview } from "@/components/contracts/TemplatePagesPreview";
 import { TemplateEditorWorkspace } from "@/components/contracts/TemplateEditorWorkspace";
 
 const formatDate = (value: string) =>
@@ -198,6 +199,9 @@ export default function ContractTemplates() {
       jurisdiction: t.jurisdiction ?? "",
       description: t.description,
       content: t.content,
+      coverPage: t.coverPage,
+      tocEnabled: t.tocEnabled,
+      tocTitle: t.tocTitle,
       version: t.version,
       folderId: t.folderId ?? null,
       hrWorkerCategory: t.hrWorkerCategory ?? null,
@@ -837,7 +841,12 @@ export default function ContractTemplates() {
                   )}
                 </header>
                 <Separator />
-                <RichTextView html={preview.content} />
+                <TemplatePagesPreview
+                  coverHtml={preview.coverPage}
+                  tocEnabled={preview.tocEnabled}
+                  tocTitle={preview.tocTitle}
+                  bodyHtml={preview.content}
+                />
               </article>
             )}
           </ScrollArea>

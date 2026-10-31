@@ -37,3 +37,15 @@ export const starterFor = (
   moduleKey === "grc" && areaKey === "deals"
     ? { label: "Deal contract outline", html: DEAL_CONTRACT_STARTER }
     : null;
+
+// A cover page that works for any module: it uses only the common fields,
+// which every contract is filled with. It is centred automatically.
+export const COVER_PAGE_STARTER = `
+<h1>{{title}}</h1>
+<p>between</p>
+<p><strong>{{partyAName}}</strong></p>
+<p>and</p>
+<p><strong>{{partyBName}}</strong></p>
+<p>Effective {{effectiveDate}}</p>
+<p>Reference {{contractReference}}</p>
+`.trim();
