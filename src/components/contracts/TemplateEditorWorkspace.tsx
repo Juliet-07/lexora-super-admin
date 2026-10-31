@@ -49,10 +49,13 @@ import {
 import {
   countTokens,
   fallbackRegistry,
+  fetchMergeFieldIndex,
   fetchMergeFieldRegistry,
+  type FieldIndexEntry,
   renderWithSamples,
   type RegistryField,
 } from "@/lib/contract-merge-fields";
+import { useToast } from "@/hooks/use-toast";
 import { starterFor } from "@/lib/contract-template-starters";
 
 interface Props {
@@ -83,7 +86,12 @@ export function TemplateEditorWorkspace({
   saving,
   onSave,
 }: Props) {
+  const { toast } = useToast();
   const [tab, setTab] = useState("body");
+  const [previewMode, setPreviewMode] = useState<"fields" | "samples">(
+    "fields",
+  );
+  const titleRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
   const touchedRef = useRef(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -113,21 +121,69 @@ export function TemplateEditorWorkspace({
   const offline =
     registryQuery.isError ||
     (registryQuery.isSuccess && !registryQuery.data.length);
-  const fields: RegistryField[] = useMemo(
+  // Every field of the module — what counts as "a real field" ...
+  const allFields: RegistryField[] = useMemo(
     () =>
       offline ? fallbackRegistry(form.moduleKey) : (registryQuery.data ?? []),
     [offline, registryQuery.data, form.moduleKey],
   );
+  // ... and the ones offered for this template's area (GRC deal contracts
+  // are offered the deal fields, not the governance ones).
+  const fields = useMemo(
+    () =>
+      allFields.filter(
+        (f) =>
+          !form.areaKey || !f.areas.length || f.areas.includes(form.areaKey),
+      ),
+    [allFields, form.areaKey],
+  );
 
-  const known = useMemo(() => new Set(fields.map((f) => f.token)), [fields]);
+  // Every field in EVERY module. The product owner's list files a field
+  // under one module, but a template in another may use it (a deal contract
+  // using partyAName), so "known" has to mean known anywhere.
+  const indexQuery = useQuery({
+    queryKey: ["mergeFieldIndex"],
+    queryFn: fetchMergeFieldIndex,
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+    enabled: open,
+  });
+  const index: FieldIndexEntry[] = useMemo(
+    () =>
+      indexQuery.data?.length
+        ? indexQuery.data
+        : allFields.map((f) => ({
+            token: f.token,
+            label: f.label,
+            group: f.group,
+          })),
+    [indexQuery.data, allFields],
+  );
+  const known = useMemo(() => new Set(index.map((f) => f.token)), [index]);
+  const offered = useMemo(() => new Set(fields.map((f) => f.token)), [fields]);
   const counts = useMemo(() => countTokens(form.content), [form.content]);
+  const checking = registryQuery.isLoading || indexQuery.isLoading;
   const unknown = useMemo(
     () =>
-      registryQuery.isLoading
+      checking
         ? []
-        : Array.from(counts.keys()).filter((t) => !known.has(t)),
-    [counts, known, registryQuery.isLoading],
+        : Array.from(counts.entries())
+            .filter(([t]) => !known.has(t))
+            .map(([token, count]) => ({ token, count })),
+    [counts, known, checking],
   );
+  // Real fields used here that belong to another module or area.
+  const elsewhere = useMemo(() => {
+    if (checking) return [];
+    const labels = new Map(index.map((f) => [f.token, f.label]));
+    return Array.from(counts.entries())
+      .filter(([t]) => known.has(t) && !offered.has(t))
+      .map(([token, count]) => ({
+        token,
+        count,
+        label: labels.get(token) ?? token,
+      }));
+  }, [counts, known, offered, index, checking]);
   const repeated = useMemo(
     () =>
       fields
@@ -135,6 +191,63 @@ export function TemplateEditorWorkspace({
         .map((f) => ({ token: f.token, count: counts.get(f.token) ?? 0 })),
     [fields, counts],
   );
+
+  // ── Fixing fields already in the document ───────────────────
+  const tokenRanges = (editor: Editor, token: string) => {
+    const ranges: { from: number; to: number }[] = [];
+    const needle = `{{${token}}}`;
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      let at = node.text.indexOf(needle);
+      while (at !== -1) {
+        ranges.push({ from: pos + at, to: pos + at + needle.length });
+        at = node.text.indexOf(needle, at + needle.length);
+      }
+    });
+    return ranges;
+  };
+  const findCursor = useRef<Record<string, number>>({});
+  // Selects the next occurrence (and the one after, on the next click).
+  const findToken = (token: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const ranges = tokenRanges(editor, token);
+    if (!ranges.length) return;
+    const i = (findCursor.current[token] ?? -1) + 1;
+    const r = ranges[i % ranges.length];
+    findCursor.current[token] = i % ranges.length;
+    touchedRef.current = true;
+    // Focus first, then select on the next frame — selecting in the same
+    // tick as the focus can lose to the editor restoring its old cursor.
+    editor.commands.focus();
+    requestAnimationFrame(() =>
+      editor
+        .chain()
+        .setTextSelection({ from: r.from, to: r.to })
+        .scrollIntoView()
+        .run(),
+    );
+  };
+  const replaceToken = (from: string, to: string | null) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const ranges = tokenRanges(editor, from);
+    if (!ranges.length) return;
+    const tr = editor.state.tr;
+    // Back to front so earlier positions stay valid.
+    for (const r of ranges.reverse()) {
+      if (to === null) tr.delete(r.from, r.to);
+      else tr.insertText(`{{${to}}}`, r.from, r.to);
+    }
+    editor.view.dispatch(tr);
+    toast({
+      title:
+        to === null
+          ? `Removed {{${from}}}`
+          : `Replaced {{${from}}} with {{${to}}}`,
+      description: `${ranges.length} place${ranges.length > 1 ? "s" : ""} updated.`,
+    });
+  };
 
   const insertField = (f: RegistryField) => {
     const editor = editorRef.current;
@@ -160,7 +273,7 @@ export function TemplateEditorWorkspace({
 
   // ── Readiness ───────────────────────────────────────────────
   const errors: string[] = [];
-  if (!form.title.trim()) errors.push("Add a title (Details tab).");
+  if (!form.title.trim()) errors.push("Add a title");
   if (bodyEmpty) errors.push("The template body is empty.");
   const warnings: string[] = [];
   if (!bodyEmpty && counts.size === 0)
@@ -170,8 +283,11 @@ export function TemplateEditorWorkspace({
   if (unknown.length)
     warnings.push(
       `${unknown.length} unknown field${unknown.length > 1 ? "s" : ""}: ${unknown
-        .map((t) => `{{${t}}}`)
-        .join(", ")} — they will stay as plain text.`,
+        .slice(0, 6)
+        .map((u) => `{{${u.token}}}`)
+        .join(
+          ", ",
+        )}${unknown.length > 6 ? ` and ${unknown.length - 6} more` : ""} — they will stay as plain text.`,
     );
   repeated.forEach((r) =>
     warnings.push(
@@ -179,11 +295,25 @@ export function TemplateEditorWorkspace({
     ),
   );
 
+  // The title box lives in the header, visible on every tab.
+  const focusTitle = () => {
+    toast({
+      title: "Give the template a title first",
+      description: "Type it in the title box at the top-left.",
+      variant: "destructive",
+    });
+    titleRef.current?.focus();
+  };
+
   const requestClose = () =>
     dirty ? setConfirmClose(true) : onOpenChange(false);
   const publish = () => {
+    if (!form.title.trim()) {
+      focusTitle();
+      return;
+    }
     if (errors.length) {
-      setTab(!form.title.trim() ? "details" : "body");
+      setTab("body");
       return;
     }
     if (warnings.length) setConfirmPublish(true);
@@ -194,8 +324,8 @@ export function TemplateEditorWorkspace({
     setForm({ ...form, [k]: v });
 
   const previewHtml = useMemo(
-    () => renderWithSamples(form.content, fields),
-    [form.content, fields],
+    () => renderWithSamples(form.content, allFields, previewMode),
+    [form.content, allFields, previewMode],
   );
 
   return (
@@ -217,11 +347,12 @@ export function TemplateEditorWorkspace({
               <Input
                 value={form.title}
                 onChange={(e) => set("title", e.target.value)}
-                placeholder="Untitled template — give it a name"
+                placeholder="Template title, e.g. Share Purchase Agreement"
                 aria-label="Template title"
-                className="h-9 border-transparent bg-transparent px-1 text-lg font-semibold shadow-none focus-visible:border-input"
+                ref={titleRef}
+                className="h-10 text-base font-semibold"
               />
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
                 <Badge variant="outline">{moduleLabel(form.moduleKey)}</Badge>
                 <span>{areaLabel(form.moduleKey, form.areaKey)}</span>
                 <span>·</span>
@@ -244,7 +375,7 @@ export function TemplateEditorWorkspace({
                 disabled={saving}
                 onClick={() => {
                   if (!form.title.trim()) {
-                    setTab("details");
+                    focusTitle();
                     return;
                   }
                   onSave("Draft");
@@ -278,12 +409,7 @@ export function TemplateEditorWorkspace({
             <div className="flex items-center justify-between gap-3 border-b px-5 py-2">
               <TabsList>
                 <TabsTrigger value="body">Template body</TabsTrigger>
-                <TabsTrigger value="details">
-                  Details & settings
-                  {!form.title.trim() && (
-                    <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
-                  )}
-                </TabsTrigger>
+                <TabsTrigger value="details">Details & settings</TabsTrigger>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-2 text-xs">
@@ -295,10 +421,13 @@ export function TemplateEditorWorkspace({
                   <span
                     className={
                       errors.length
-                        ? "flex items-center gap-1 text-destructive"
+                        ? "flex cursor-pointer items-center gap-1 text-destructive"
                         : "flex items-center gap-1 text-amber-500"
                     }
                     title={[...errors, ...warnings].join("\n")}
+                    onClick={() =>
+                      !form.title.trim() && titleRef.current?.focus()
+                    }
                   >
                     <AlertTriangle className="h-3.5 w-3.5" />
                     {errors.length
@@ -365,6 +494,11 @@ export function TemplateEditorWorkspace({
                     offline={offline}
                     counts={counts}
                     unknown={unknown}
+                    elsewhere={elsewhere}
+                    index={index}
+                    onFind={findToken}
+                    onReplace={replaceToken}
+                    onRemove={(t) => replaceToken(t, null)}
                     repeated={repeated}
                     onInsert={insertField}
                   />
@@ -379,6 +513,15 @@ export function TemplateEditorWorkspace({
             >
               <div className="mx-auto max-w-3xl space-y-5 p-6">
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="tpl-title">Title</Label>
+                    <Input
+                      id="tpl-title"
+                      value={form.title}
+                      onChange={(e) => set("title", e.target.value)}
+                      placeholder="e.g. Share Purchase Agreement"
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label>Module</Label>
                     <Select
@@ -562,12 +705,34 @@ export function TemplateEditorWorkspace({
               className="m-0 min-h-0 flex-1 overflow-y-auto"
             >
               <div className="mx-auto max-w-3xl space-y-3 p-6">
-                <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  This is the template filled with <b>sample values</b>{" "}
-                  (highlighted) so you can check the wording. A real contract
-                  uses the deal's or the client's own data. Amber text is a
-                  field the system doesn't recognise.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    {previewMode === "fields"
+                      ? "Each merge field is shown as itself — a tenant's contract fills it from the deal or form. Amber is a field the system doesn't recognise."
+                      : "Sample values are shown only to help you check the wording — real contracts use the deal's own data."}
+                  </p>
+                  <div className="flex shrink-0 gap-1 text-xs">
+                    {(
+                      [
+                        ["fields", "Merge fields"],
+                        ["samples", "Sample values"],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setPreviewMode(mode)}
+                        className={
+                          previewMode === mode
+                            ? "rounded-full border border-primary bg-primary/10 px-2.5 py-0.5 text-primary"
+                            : "rounded-full border px-2.5 py-0.5 text-muted-foreground hover:text-foreground"
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <article className="rounded-lg border bg-card p-8">
                   <h2 className="mb-1 text-xl font-bold">
                     {form.title || "Untitled template"}
@@ -617,7 +782,7 @@ export function TemplateEditorWorkspace({
                   Tenants will see this template straight away. Worth a second
                   look:
                 </p>
-                <ul className="list-disc space-y-1 pl-5 text-sm">
+                <ul className="max-h-60 list-disc space-y-1 overflow-y-auto pl-5 text-sm">
                   {warnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}

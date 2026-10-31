@@ -301,6 +301,10 @@ export interface RegistryField extends MergeFieldDef {
   example: string;
   /** Expands into a whole list — should appear in a template once. */
   singleUse: boolean;
+  /** Template areas the field is offered in; empty = every area. */
+  areas: string[];
+  /** The system has no value for it — it's completed on the contract. */
+  clause: boolean;
 }
 
 export const MERGE_GROUP_ORDER = [
@@ -314,6 +318,14 @@ export const MERGE_GROUP_ORDER = [
   "Signing",
   "Person",
   "Letter",
+  // Clause-level fields from the product owner's list
+  "Deal & transaction clauses",
+  "Governance, risk & compliance clauses",
+  "Contract clauses",
+  "Dispute resolution & ADR clauses",
+  "AML & KYC clauses",
+  "HR clauses",
+  "Finance clauses",
 ];
 
 export const orderGroups = (groups: string[]): string[] =>
@@ -343,7 +355,64 @@ export async function fetchMergeFieldRegistry(
     input: (f.input ?? "text") as MergeFieldInputKind,
     example: String(f.example ?? ""),
     singleUse: !!f.singleUse,
+    areas: Array.isArray(f.areas) ? (f.areas as string[]) : [],
+    clause: f.source === "clause",
   }));
+}
+
+/** One entry of the slim all-modules index (token → label). */
+export interface FieldIndexEntry {
+  token: string;
+  label: string;
+  group: string;
+}
+
+/** Every field in every module — to tell "valid, from elsewhere" from "not a field". */
+export async function fetchMergeFieldIndex(): Promise<FieldIndexEntry[]> {
+  const res = await api.get("/super-admin/contract-templates/merge-fields", {
+    params: { compact: true },
+  });
+  return unwrapList(res).map((f) => ({
+    token: String(f.token),
+    label: String(f.label ?? f.token),
+    group: String(f.group ?? ""),
+  }));
+}
+
+const words = (token: string) =>
+  token
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+/**
+ * The fields closest in name to `token` — "buyerEntityName" suggests
+ * "buyerName" and "partyBEntityType" before anything unrelated. A score of
+ * shared words, with a bonus when one name contains the other.
+ */
+export function suggestFields(
+  token: string,
+  index: FieldIndexEntry[],
+  limit = 5,
+): FieldIndexEntry[] {
+  const a = new Set(words(token));
+  const lower = token.toLowerCase();
+  return index
+    .filter((f) => f.token !== token)
+    .map((f) => {
+      const b = new Set(words(f.token));
+      const shared = [...a].filter((w) => b.has(w)).length;
+      const union = new Set([...a, ...b]).size;
+      let score = union ? shared / union : 0;
+      const fl = f.token.toLowerCase();
+      if (fl.includes(lower) || lower.includes(fl)) score += 0.5;
+      return { f, score };
+    })
+    .filter((x) => x.score > 0.2)
+    .sort((x, y) => y.score - x.score)
+    .slice(0, limit)
+    .map((x) => x.f);
 }
 
 /** The offline fallback, shaped like registry fields. */
@@ -354,6 +423,8 @@ export function fallbackRegistry(moduleKey: string): RegistryField[] {
     input: "text" as const,
     example: f.label,
     singleUse: SINGLE_USE_TOKENS.includes(f.token),
+    areas: [],
+    clause: false,
   }));
 }
 
@@ -381,12 +452,17 @@ const escapeHtml = (v: string) =>
 export function renderWithSamples(
   html: string,
   fields: RegistryField[],
+  mode: "fields" | "samples" = "samples",
 ): string {
   const byToken = new Map(fields.map((f) => [f.token, f]));
   return (html ?? "").replace(/\{\{(\w+)\}\}/g, (_m, token: string) => {
     const f = byToken.get(token);
     if (!f) {
       return `<mark class="tpl-unknown" title="Not a known field">{{${token}}}</mark>`;
+    }
+    // The merge field itself — exactly what a tenant's contract will fill in.
+    if (mode === "fields") {
+      return `<mark class="tpl-field" title="${escapeHtml(f.label)}">{{${token}}}</mark>`;
     }
     const lines = (f.example || f.label).split("\n").filter(Boolean);
     const body =
