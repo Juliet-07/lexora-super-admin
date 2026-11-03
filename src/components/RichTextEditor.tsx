@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import {
   EditorContent,
   Extension,
@@ -29,6 +29,10 @@ import {
   Search,
   ImagePlus,
   Type,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
@@ -124,6 +128,54 @@ const MergeTokenHighlight = Extension.create({
     ];
   },
 });
+
+// Paragraph and heading alignment, stored as an inline `text-align`
+// style on the block so it survives wherever the HTML is rendered or
+// turned into a PDF. Left is the default and is stored as nothing.
+const ALIGNABLE = ["paragraph", "heading"];
+const TextAlign = Extension.create({
+  name: "textAlign",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ALIGNABLE,
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.textAlign || null,
+            renderHTML: (attrs: { textAlign?: string | null }) =>
+              attrs.textAlign
+                ? { style: `text-align: ${attrs.textAlign}` }
+                : {},
+          },
+        },
+      },
+    ];
+  },
+});
+
+type Align = "left" | "center" | "right" | "justify";
+const ALIGNMENTS: { value: Align; label: string; Icon: typeof AlignLeft }[] = [
+  { value: "left", label: "Align left", Icon: AlignLeft },
+  { value: "center", label: "Align center", Icon: AlignCenter },
+  { value: "right", label: "Align right", Icon: AlignRight },
+  { value: "justify", label: "Justify", Icon: AlignJustify },
+];
+const setAlign = (editor: Editor, value: Align) => {
+  const textAlign = value === "left" ? null : value;
+  editor
+    .chain()
+    .focus()
+    .updateAttributes("paragraph", { textAlign })
+    .updateAttributes("heading", { textAlign })
+    .run();
+};
+const isAlign = (editor: Editor, value: Align) =>
+  value === "left"
+    ? !["center", "right", "justify"].some((a) =>
+        editor.isActive({ textAlign: a }),
+      )
+    : editor.isActive({ textAlign: value });
 
 // Font size, stored as <span style="font-size: 18px"> — plain HTML that
 // the tenant app's editor, previews and emails already understand. Written
@@ -432,6 +484,16 @@ function Toolbar({
   images?: boolean;
 }) {
   const [imageOpen, setImageOpen] = useState(false);
+  // The editor doesn't re-render React on selection moves, so without this
+  // the pressed state of the toolbar buttons (alignment, bold, headings…)
+  // stays stuck on whatever it was after the last edit.
+  const [, refresh] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    editor.on("transaction", refresh);
+    return () => {
+      editor.off("transaction", refresh);
+    };
+  }, [editor]);
   return (
     <div className="flex flex-wrap items-center gap-1 border-b bg-muted/40 px-2 py-1.5">
       <Toggle
@@ -538,6 +600,21 @@ function Toolbar({
       >
         <Heading3 className="h-4 w-4" />
       </Toggle>
+
+      <Separator orientation="vertical" className="mx-1 h-6" />
+
+      {ALIGNMENTS.map(({ value, label, Icon }) => (
+        <Toggle
+          key={value}
+          size="sm"
+          pressed={isAlign(editor, value)}
+          onPressedChange={() => setAlign(editor, value)}
+          aria-label={label}
+          title={label}
+        >
+          <Icon className="h-4 w-4" />
+        </Toggle>
+      ))}
 
       <Separator orientation="vertical" className="mx-1 h-6" />
 
@@ -662,6 +739,7 @@ export function RichTextEditor({
     extensions: [
       StarterKit,
       FontSize,
+      TextAlign,
       ...(images ? [ImageBlock] : []),
       MergeTokenHighlight,
     ],
