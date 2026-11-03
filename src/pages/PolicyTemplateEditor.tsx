@@ -53,6 +53,7 @@ import {
   type PolicyTemplateInput,
   type PolicyTemplateStatus,
   type PolicyTemplateAppliesTo,
+  fetchPolicyMergeFields,
 } from "@/lib/policy-templates";
 
 export default function PolicyTemplateEditor() {
@@ -76,6 +77,20 @@ export default function PolicyTemplateEditor() {
   useEffect(() => {
     if (!isNew && loadError) navigate("/policy-templates", { replace: true });
   }, [isNew, loadError, navigate]);
+
+  // Fields an author can insert ({{tenantCompanyName}}, {{policyOwner}}…) —
+  // served by the engine. If it can't be reached the editor still works,
+  // just without the Insert field list.
+  const { data: mergeFields = [] } = useQuery({
+    queryKey: ["policyMergeFields"],
+    queryFn: fetchPolicyMergeFields,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const knownTokens = useMemo(
+    () => new Set(mergeFields.map((f) => f.token)),
+    [mergeFields],
+  );
 
   const [templateId, setTemplateId] = useState<string | undefined>(undefined);
   const [status, setLocalStatus] = useState<PolicyTemplateStatus>("Draft");
@@ -411,6 +426,10 @@ export default function PolicyTemplateEditor() {
                       <RichTextEditor
                         value={section.content}
                         onChange={(html) => setSection(i, { content: html })}
+                        mergeFields={mergeFields}
+                        highlightTokens={
+                          mergeFields.length ? knownTokens : undefined
+                        }
                       />
                     </div>
                   ))}

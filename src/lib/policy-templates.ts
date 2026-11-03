@@ -159,3 +159,27 @@ export async function setPolicyTemplateStatus(
 export async function deletePolicyTemplate(id: string): Promise<void> {
   await api.delete(`/super-admin/policy-templates/${id}`);
 }
+
+// ── Merge fields ─────────────────────────────────────────────
+// The fields an author can put in a policy / governance-code template
+// ({{tenantCompanyName}}, {{policyOwner}}…). The engine owns the list
+// (src/common/utils/policy-merge-fields.ts), so a new field needs no change
+// here.
+export interface PolicyMergeField {
+  token: string;
+  label: string;
+  /** "Group · what it is" — shown under the label in the Insert field list. */
+  description: string;
+  group: string;
+}
+
+export async function fetchPolicyMergeFields(): Promise<PolicyMergeField[]> {
+  const res = await api.get("/super-admin/policy-templates/merge-fields");
+  const d = unwrap(res);
+  return (Array.isArray(d) ? d : []).map((f: any) => ({
+    token: String(f.token),
+    label: String(f.label ?? f.token),
+    group: String(f.group ?? ""),
+    description: [f.group, f.description].filter(Boolean).join(" · "),
+  }));
+}

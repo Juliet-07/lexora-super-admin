@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   EditorContent,
   Extension,
+  Mark,
   Node,
   mergeAttributes,
   useEditor,
@@ -27,6 +28,7 @@ import {
   ChevronDown,
   Search,
   ImagePlus,
+  Type,
 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
@@ -122,6 +124,39 @@ const MergeTokenHighlight = Extension.create({
     ];
   },
 });
+
+// Font size, stored as <span style="font-size: 18px"> — plain HTML that
+// the tenant app's editor, previews and emails already understand. Written
+// here rather than pulled from a package so the editor needs no new
+// dependency. `setMark("fontSize", { size: "18px" })` applies it to the
+// selection; `unsetMark("fontSize")` returns to the default.
+const FontSize = Mark.create({
+  name: "fontSize",
+  addAttributes() {
+    return {
+      size: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.style.fontSize || null,
+        renderHTML: (attrs: { size?: string | null }) =>
+          attrs.size ? { style: `font-size: ${attrs.size}` } : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "span",
+        getAttrs: (el: HTMLElement | string) =>
+          typeof el !== "string" && el.style.fontSize ? null : false,
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", HTMLAttributes, 0];
+  },
+});
+
+const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
 // A block-level picture with an optional caption. Stored as plain
 // <figure><img><figcaption> HTML, so it renders as-is on the public
@@ -351,7 +386,7 @@ function MergeFieldPicker({
           </div>
         </div>
         <DropdownMenuLabel className="px-2 pt-2 text-xs">
-          Click to insert — filled in automatically when a contract is drafted
+          Click to insert — filled in automatically when a document is created
           from this template
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -431,6 +466,55 @@ function Toolbar({
       >
         <Code2 className="h-4 w-4" />
       </Toggle>
+
+      <Separator orientation="vertical" className="mx-1 h-6" />
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 px-2 text-xs"
+            aria-label="Font size"
+          >
+            <Type className="h-4 w-4" />
+            {(
+              editor.getAttributes("fontSize").size as string | undefined
+            )?.replace("px", "") ?? "Size"}
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+          <DropdownMenuLabel>Font size</DropdownMenuLabel>
+          <DropdownMenuItem
+            onSelect={() =>
+              editor
+                .chain()
+                .focus()
+                .unsetMark("fontSize", { extendEmptyMarkRange: true })
+                .run()
+            }
+          >
+            Default
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {FONT_SIZES.map((px) => (
+            <DropdownMenuItem
+              key={px}
+              onSelect={() =>
+                editor
+                  .chain()
+                  .focus()
+                  .setMark("fontSize", { size: `${px}px` })
+                  .run()
+              }
+            >
+              <span style={{ fontSize: Math.min(px, 24) }}>{px}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <Separator orientation="vertical" className="mx-1 h-6" />
 
@@ -577,6 +661,7 @@ export function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
+      FontSize,
       ...(images ? [ImageBlock] : []),
       MergeTokenHighlight,
     ],

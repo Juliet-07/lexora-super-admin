@@ -65,6 +65,16 @@ export const TEMPLATE_MODULES: TemplateModule[] = [
     ],
   },
   {
+    key: "finance",
+    name: "Finance",
+    description:
+      "Finance agreements — procurement, payments, loans and other financial contracts",
+    areas: [
+      { key: "finance-contracts", name: "Finance contracts" },
+      { key: "procurement", name: "Procurement & Purchases" },
+    ],
+  },
+  {
     key: "kyc_aml",
     name: "KYC / AML",
     description: "Client onboarding engagement and contracting templates",
