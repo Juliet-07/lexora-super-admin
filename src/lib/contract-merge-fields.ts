@@ -332,6 +332,12 @@ export const MERGE_GROUP_ORDER = [
   "Deal dates",
   "Term sheet",
   "Signing",
+  // Term sheets (GRC)
+  "Joint venture structure",
+  "JV governance",
+  "Timetable and conditions",
+  "Dispute resolution",
+  "Law and notices",
   "Person",
   "Employment",
   "Pay",

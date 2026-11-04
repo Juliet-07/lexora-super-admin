@@ -834,9 +834,18 @@ export function TemplateEditorWorkspace({
                     {form.moduleKey === "grc" && form.areaKey === "deals" && (
                       <p className="text-xs text-primary">
                         Published here, this template appears under “Generate
-                        from template” on every GRC deal.
+                        from template” on the Contract tab of every GRC deal.
                       </p>
                     )}
+                    {form.moduleKey === "grc" &&
+                      form.areaKey === "term_sheets" && (
+                        <p className="text-xs text-primary">
+                          Published here, this template appears under “Generate
+                          term sheet” on the Term Sheet tab of every GRC deal.
+                          It is its own document: it is reviewed by the parties
+                          and never merged into a contract.
+                        </p>
+                      )}
                   </div>
                   <div className="space-y-2">
                     <Label>Category</Label>
