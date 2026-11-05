@@ -10,6 +10,10 @@ import { api } from "./api";
 // `content` field, since a policy template is assembled from named
 // sections (e.g. "Purpose", "Scope", "Enforcement") that a tenant
 // then edits per-policy after selecting the template.
+// UPDATE: a template is now ONE rich-text `body`, like a contract template.
+// The engine splits it at Heading 1–3 into the tenant policy's sections.
+// Templates saved before this still carry `sections`; normalize() folds
+// them into the body so they open (and re-save) as a body.
 // ─────────────────────────────────────────────────────────────
 
 // Mirrors POLICY_CATEGORIES in lexora-tenant's src/lib/grc/policy-api.ts —
@@ -47,20 +51,16 @@ export const POLICY_TEMPLATE_APPLIES_TO = [
 export type PolicyTemplateAppliesTo =
   (typeof POLICY_TEMPLATE_APPLIES_TO)[number];
 
-export interface PolicyTemplateSection {
-  title: string;
-  content: string; // HTML
-}
-
 export interface PolicyTemplate {
   id: string;
   title: string;
   category: string;
   description: string;
-  sections: PolicyTemplateSection[];
+  /** The whole policy as one HTML document (Heading 1–3 mark its parts). */
+  body: string;
   /** Cover page (HTML, merge fields allowed). Empty = no cover page. */
   coverPage: string;
-  /** Add a contents page, built from the section titles. */
+  /** Add a contents page, built from the body's headings. */
   tocEnabled: boolean;
   tocTitle: string;
   status: PolicyTemplateStatus;
@@ -75,13 +75,11 @@ export type PolicyTemplateInput = Omit<
   "id" | "createdAt" | "updatedAt" | "publishedAt" | "status"
 >;
 
-export const emptySection: PolicyTemplateSection = { title: "", content: "" };
-
 export const emptyPolicyTemplate: PolicyTemplateInput = {
   title: "",
   category: POLICY_CATEGORIES[0],
   description: "",
-  sections: [{ ...emptySection }],
+  body: "",
   coverPage: "",
   tocEnabled: true,
   tocTitle: "Table of Contents",
@@ -108,18 +106,21 @@ const unwrap = (res: any) =>
       ? res.data
       : (res.data?.data ?? res.data);
 
+// Templates written before the single body existed: one heading per section.
+function sectionsToBody(sections: any): string {
+  if (!Array.isArray(sections)) return "";
+  return sections
+    .map((s: any) => `<h2>${s.title || ""}</h2>${s.content || ""}`)
+    .join("");
+}
+
 function normalize(raw: any): PolicyTemplate {
   return {
     id: raw._id ?? raw.id,
     title: raw.title,
     category: raw.category,
     description: raw.description || "",
-    sections: Array.isArray(raw.sections)
-      ? raw.sections.map((s: any) => ({
-          title: s.title || "",
-          content: s.content || "",
-        }))
-      : [],
+    body: raw.body || sectionsToBody(raw.sections),
     coverPage: raw.coverPage || "",
     tocEnabled: raw.tocEnabled ?? false,
     tocTitle: raw.tocTitle || "Table of Contents",

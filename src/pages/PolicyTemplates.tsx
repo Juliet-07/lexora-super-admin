@@ -13,6 +13,7 @@ import {
   Loader2,
   Layers,
 } from "lucide-react";
+import { outlineOf } from "@/lib/contract-structure";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -289,7 +290,7 @@ export default function PolicyTemplates() {
                 <TableHead className="w-[36%]">Template</TableHead>
                 <TableHead>Applies to</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Sections</TableHead>
+                <TableHead>Headings</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Updated</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -321,7 +322,7 @@ export default function PolicyTemplates() {
                   <TableCell className="align-top text-sm text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       <Layers className="h-3.5 w-3.5" />
-                      {template.sections.length}
+                      {outlineOf(template.body).length}
                     </div>
                   </TableCell>
                   <TableCell className="align-top">

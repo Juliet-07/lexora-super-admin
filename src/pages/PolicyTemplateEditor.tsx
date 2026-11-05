@@ -9,10 +9,6 @@ import {
   Save,
   Send,
   Undo2,
-  Plus,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
   FileText,
   ListTree,
   BookOpen,
@@ -39,22 +35,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { TemplatePagesPreview } from "@/components/contracts/TemplatePagesPreview";
-import { hasText, type OutlineEntry } from "@/lib/contract-structure";
+import { hasText, outlineOf } from "@/lib/contract-structure";
 import {
   POLICY_CATEGORIES,
   GOVERNANCE_CODE_CATEGORIES,
   POLICY_TEMPLATE_APPLIES_TO,
   createPolicyTemplate,
   emptyPolicyTemplate,
-  emptySection,
   POLICY_COVER_STARTER,
   fetchPolicyTemplate,
   setPolicyTemplateStatus,
@@ -107,26 +97,13 @@ export default function PolicyTemplateEditor() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hydrated, setHydrated] = useState(isNew);
   // Which part of the document is being written, in the order a reader meets
-  // them: the cover page, the contents page, then the sections.
-  const [part, setPart] = useState<"cover" | "toc" | "sections">("sections");
+  // them: the cover page, the contents page, then the body.
+  const [part, setPart] = useState<"cover" | "toc" | "body">("body");
   const coverEditorRef = useRef<Editor | null>(null);
   const coverEmpty = !hasText(form.coverPage);
-  // The contents page is read off the section titles, so it can't disagree
+  // The contents page is read off the body's headings, so it can't disagree
   // with the policy.
-  const outline = useMemo<OutlineEntry[]>(
-    () =>
-      form.sections
-        .filter((s) => s.title.trim())
-        .map((s) => ({ level: 1, html: s.title.trim(), text: s.title.trim() })),
-    [form.sections],
-  );
-  const bodyHtml = useMemo(
-    () =>
-      form.sections
-        .map((s) => `<h2>${s.title || ""}</h2>${s.content || ""}`)
-        .join(""),
-    [form.sections],
-  );
+  const outline = useMemo(() => outlineOf(form.body), [form.body]);
 
   useEffect(() => {
     if (existing && !hydrated) {
@@ -136,9 +113,7 @@ export default function PolicyTemplateEditor() {
         title: existing.title,
         category: existing.category,
         description: existing.description,
-        sections: existing.sections.length
-          ? existing.sections
-          : [{ ...emptySection }],
+        body: existing.body,
         appliesTo: existing.appliesTo,
         coverPage: existing.coverPage,
         tocEnabled: existing.tocEnabled,
@@ -177,56 +152,13 @@ export default function PolicyTemplateEditor() {
     }));
   };
 
-  const setSection = (
-    index: number,
-    patch: Partial<{ title: string; content: string }>,
-  ) => {
-    setForm((f) => ({
-      ...f,
-      sections: f.sections.map((s, i) =>
-        i === index ? { ...s, ...patch } : s,
-      ),
-    }));
-    setErrors((e) => ({ ...e, [`section-${index}`]: "" }));
-  };
-
-  const addSection = () =>
-    setForm((f) => ({ ...f, sections: [...f.sections, { ...emptySection }] }));
-
-  const removeSection = (index: number) =>
-    setForm((f) => ({
-      ...f,
-      sections: f.sections.filter((_, i) => i !== index),
-    }));
-
-  const moveSection = (index: number, dir: -1 | 1) =>
-    setForm((f) => {
-      const target = index + dir;
-      if (target < 0 || target >= f.sections.length) return f;
-      const next = [...f.sections];
-      [next[index], next[target]] = [next[target], next[index]];
-      return { ...f, sections: next };
-    });
-
   const validate = (forPublish: boolean) => {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "Title is required.";
     if (form.title.length > 200)
       next.title = "Keep the title under 200 characters.";
-    if (!form.sections.length) {
-      next.sections = "At least one section is required.";
-    } else {
-      form.sections.forEach((s, i) => {
-        if (forPublish && !s.title.trim())
-          next[`section-${i}`] = "Section title is required before publishing.";
-      });
-    }
-    if (forPublish) {
-      const anyContent = form.sections.some(
-        (s) => s.content.replace(/<[^>]*>/g, "").trim().length > 0,
-      );
-      if (!anyContent) next.sections = "Add content before publishing.";
-    }
+    if (forPublish && !hasText(form.body))
+      next.body = "Add the policy body before publishing.";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -399,11 +331,11 @@ export default function PolicyTemplateEditor() {
                         : "off",
                     ],
                     [
-                      "sections",
+                      "body",
                       "3",
-                      "Sections",
+                      "Body",
                       BookOpen,
-                      String(form.sections.length),
+                      hasText(form.body) ? "added" : "empty",
                     ],
                   ] as const
                 ).map(([key, n, label, Icon, note]) => (
@@ -491,9 +423,9 @@ export default function PolicyTemplateEditor() {
                     </CardTitle>
                     <CardDescription>
                       It goes on its own page after the cover and before the
-                      sections, and is built automatically from the section
-                      titles — you never type it, so it can't fall out of step
-                      with the policy.
+                      body, and is built automatically from the headings
+                      (Heading 1–3) you use in it — you never type it, so it
+                      can't fall out of step with the policy.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -533,7 +465,7 @@ export default function PolicyTemplateEditor() {
                             </ol>
                           ) : (
                             <p className="text-sm text-muted-foreground">
-                              Nothing yet — give the sections titles and they
+                              Nothing yet — use Heading 1–3 in the body and they
                               appear here.
                             </p>
                           )}
@@ -544,108 +476,29 @@ export default function PolicyTemplateEditor() {
                 </Card>
               )}
 
-              {part === "sections" && (
+              {part === "body" && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">
-                      Sections{" "}
-                      <span className="font-normal text-muted-foreground">
-                        ({form.sections.length})
-                      </span>
-                    </CardTitle>
+                    <CardTitle className="text-base">Body</CardTitle>
                     <CardDescription>
-                      Built into the policy editor when a tenant selects this
-                      template — they can still edit every section afterwards.
+                      The policy itself, written as one document. Use Heading
+                      1–3 for the parts you want in the table of contents — when
+                      a tenant starts a policy from this template, each heading
+                      becomes a section they can still edit.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    {errors.sections && (
-                      <p className="text-xs text-destructive">
-                        {errors.sections}
-                      </p>
+                  <CardContent className="space-y-3">
+                    {errors.body && (
+                      <p className="text-xs text-destructive">{errors.body}</p>
                     )}
-                    {form.sections.map((section, i) => (
-                      <div
-                        key={i}
-                        className="space-y-2 rounded-lg border bg-muted/20 p-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={section.title}
-                            onChange={(e) =>
-                              setSection(i, { title: e.target.value })
-                            }
-                            placeholder={`Section ${i + 1} title — e.g. "Purpose", "Scope", "Enforcement"`}
-                            className="flex-1"
-                          />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                disabled={i === 0}
-                                onClick={() => moveSection(i, -1)}
-                              >
-                                <ChevronUp className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Move up</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                disabled={i === form.sections.length - 1}
-                                onClick={() => moveSection(i, 1)}
-                              >
-                                <ChevronDown className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Move down</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="text-destructive hover:text-destructive"
-                                disabled={form.sections.length <= 1}
-                                onClick={() => removeSection(i)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Remove section</TooltipContent>
-                          </Tooltip>
-                        </div>
-                        {errors[`section-${i}`] && (
-                          <p className="text-xs text-destructive">
-                            {errors[`section-${i}`]}
-                          </p>
-                        )}
-                        <RichTextEditor
-                          value={section.content}
-                          onChange={(html) => setSection(i, { content: html })}
-                          mergeFields={mergeFields}
-                          highlightTokens={
-                            mergeFields.length ? knownTokens : undefined
-                          }
-                        />
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={addSection}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add section
-                    </Button>
+                    <RichTextEditor
+                      value={form.body}
+                      onChange={(html) => set("body", html)}
+                      mergeFields={mergeFields}
+                      highlightTokens={
+                        mergeFields.length ? knownTokens : undefined
+                      }
+                    />
                   </CardContent>
                 </Card>
               )}
@@ -755,15 +608,14 @@ export default function PolicyTemplateEditor() {
               )}
               <p className="mt-3 text-xs text-muted-foreground">
                 The policy as a reader will meet it: the cover page, then the
-                table of contents, then the sections.
+                table of contents, then the body.
               </p>
             </div>
             <TemplatePagesPreview
               coverHtml={form.coverPage}
               tocEnabled={form.tocEnabled}
               tocTitle={form.tocTitle}
-              bodyHtml={bodyHtml}
-              outline={outline}
+              bodyHtml={form.body}
             />
           </div>
         </TabsContent>
