@@ -1,13 +1,19 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { RichTextView } from "@/components/RichTextEditor";
-import { hasText, outlineOf } from "@/lib/contract-structure";
+import {
+  hasText,
+  outlineOf,
+  type OutlineEntry,
+} from "@/lib/contract-structure";
 
 interface Props {
   coverHtml: string;
   tocEnabled: boolean;
   tocTitle: string;
   bodyHtml: string;
+  /** Contents entries to list instead of reading the body's headings. */
+  outline?: OutlineEntry[];
   /** Turns {{fields}} into what the preview shows (sample values, chips…). */
   transform?: (html: string) => string;
   className?: string;
@@ -20,10 +26,12 @@ export function TemplatePagesPreview({
   tocEnabled,
   tocTitle,
   bodyHtml,
+  outline: outlineOverride,
   transform = (h) => h,
   className,
 }: Props) {
-  const outline = useMemo(() => outlineOf(bodyHtml), [bodyHtml]);
+  const fromBody = useMemo(() => outlineOf(bodyHtml), [bodyHtml]);
+  const outline = outlineOverride ?? fromBody;
   const showCover = hasText(coverHtml);
   const showToc = tocEnabled && outline.length > 0;
   const bodyEmpty = !hasText(bodyHtml);

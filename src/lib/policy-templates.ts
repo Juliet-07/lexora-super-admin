@@ -58,6 +58,11 @@ export interface PolicyTemplate {
   category: string;
   description: string;
   sections: PolicyTemplateSection[];
+  /** Cover page (HTML, merge fields allowed). Empty = no cover page. */
+  coverPage: string;
+  /** Add a contents page, built from the section titles. */
+  tocEnabled: boolean;
+  tocTitle: string;
   status: PolicyTemplateStatus;
   appliesTo: PolicyTemplateAppliesTo;
   createdAt: string;
@@ -77,8 +82,21 @@ export const emptyPolicyTemplate: PolicyTemplateInput = {
   category: POLICY_CATEGORIES[0],
   description: "",
   sections: [{ ...emptySection }],
+  coverPage: "",
+  tocEnabled: true,
+  tocTitle: "Table of Contents",
   appliesTo: "Policy",
 };
+
+// A cover page that works for any policy: it uses only fields every policy
+// is filled with. It is centred automatically.
+export const POLICY_COVER_STARTER = `
+<h1>{{policyTitle}}</h1>
+<p><strong>{{tenantCompanyName}}</strong></p>
+<p>Reference {{policyReference}} · Version {{policyVersion}}</p>
+<p>Owner: {{policyOwner}}</p>
+<p>Approved by: {{approvalAuthority}}</p>
+`.trim();
 
 // Same defensive unwrap pattern as the rest of this app (see
 // Modules.tsx / knowledge.ts) — backend wraps in { data }, but
@@ -102,6 +120,9 @@ function normalize(raw: any): PolicyTemplate {
           content: s.content || "",
         }))
       : [],
+    coverPage: raw.coverPage || "",
+    tocEnabled: raw.tocEnabled ?? false,
+    tocTitle: raw.tocTitle || "Table of Contents",
     status: raw.status,
     // Legacy documents predate this field — every template on record
     // before this round was authored for Policies.
