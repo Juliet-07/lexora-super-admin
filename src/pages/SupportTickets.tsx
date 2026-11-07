@@ -141,8 +141,7 @@ export default function SupportTickets() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Tickets tenants raise with the platform team, and client Portal-access
-          problems they escalate. You work them through the tenant — you never
-          see the tenant's clients.
+          problems escalated.
         </p>
       </div>
 
@@ -150,7 +149,7 @@ export default function SupportTickets() {
         {[
           { l: "Open", v: stats?.open, icon: Inbox },
           {
-            l: "Awaiting our reply",
+            l: "Awaiting reply",
             v: stats?.needsReply,
             icon: MessageSquareReply,
           },
@@ -222,7 +221,7 @@ export default function SupportTickets() {
             id="needs-reply"
           />
           <Label htmlFor="needs-reply" className="text-sm">
-            Needs our reply
+            Needs reply
           </Label>
         </div>
       </div>
@@ -327,8 +326,7 @@ export default function SupportTickets() {
                     <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                     <p>
                       Escalated by the tenant from one of their clients' Portal
-                      tickets. You can't see the client — reply here and the
-                      tenant passes updates on to them.
+                      tickets.
                     </p>
                   </div>
                 )}
