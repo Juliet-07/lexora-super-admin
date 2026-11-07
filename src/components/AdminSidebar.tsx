@@ -13,6 +13,7 @@ import {
   FileText,
   ChevronRight,
   Inbox,
+  LifeBuoy,
   Newspaper,
   Mail,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const mainItems = [
   { title: "Insights", url: "/insights", icon: Newspaper },
   { title: "Newsletter", url: "/newsletter", icon: Mail },
   { title: "Contact Requests", url: "/contact-requests", icon: Inbox },
+  { title: "Support Tickets", url: "/support-tickets", icon: LifeBuoy },
 ];
 
 const templateItems = [

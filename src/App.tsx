@@ -24,6 +24,7 @@ import ContractTemplates from "./pages/ContractTemplates";
 import PolicyTemplates from "./pages/PolicyTemplates";
 import PolicyTemplateEditor from "./pages/PolicyTemplateEditor";
 import DemoRequests from "./pages/DemoRequests";
+import SupportTickets from "./pages/SupportTickets";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,10 @@ const App = () => (
                     <Route
                       path="/contact-requests"
                       element={<DemoRequests />}
+                    />
+                    <Route
+                      path="/support-tickets"
+                      element={<SupportTickets />}
                     />
                     <Route
                       path="/contract-templates"
