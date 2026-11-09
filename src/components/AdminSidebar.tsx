@@ -16,6 +16,7 @@ import {
   LifeBuoy,
   Newspaper,
   Mail,
+  UserCog,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -64,6 +65,7 @@ const systemItems = [
   // { title: "Audit Logs", url: "/audit-logs", icon: ScrollText },
   { title: "Settings", url: "/settings", icon: Settings },
   { title: "Transactions", url: "/transactions", icon: Receipt },
+  { title: "Admin Users", url: "/admin-users", icon: UserCog },
 ];
 
 type profileData = {

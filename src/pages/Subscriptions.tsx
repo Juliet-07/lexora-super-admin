@@ -229,16 +229,22 @@ export default function Subscriptions() {
       toast.error(err?.response?.data?.message ?? "Failed to update plan"),
   });
 
-  // ── Delete tenant ─────────────────────────────────────────
+  // ── Delete subscription ───────────────────────────────────
+  // Removes only the subscription. The server also disables the tenant's
+  // account (and their team's) — the tenant's own details are kept.
   const deleteMutation = useMutation({
     mutationFn: (tenantId: string) =>
-      api.delete(`/super-admin/tenants/${tenantId}`),
+      api.delete(`/super-admin/tenants/${tenantId}/subscription`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setDeleteTarget(null);
-      toast.success("Tenant deleted successfully.");
+      toast.success("Subscription deleted. The tenant's account is disabled.");
     },
-    onError: () => toast.error("Failed to delete tenant"),
+    onError: (err: any) =>
+      toast.error(
+        err?.response?.data?.message ?? "Failed to delete subscription",
+      ),
   });
 
   // ── Helpers ───────────────────────────────────────────────
@@ -603,7 +609,7 @@ export default function Subscriptions() {
                                 onClick={() => setDeleteTarget(sub)}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" /> Delete
-                                Tenant
+                                Subscription
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -818,38 +824,48 @@ export default function Subscriptions() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete tenant confirm */}
+      {/* Delete subscription confirm */}
       <AlertDialog
         open={!!deleteTarget}
-        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        onOpenChange={(v) =>
+          !v && !deleteMutation.isPending && setDeleteTarget(null)
+        }
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Tenant</AlertDialogTitle>
+            <AlertDialogTitle>Delete Subscription</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
+              This removes the subscription for{" "}
               <strong>
                 {deleteTarget?.tenantId?.tenantProfile?.businessName ??
                   (deleteTarget?.tenantId
                     ? `${deleteTarget.tenantId.firstName} ${deleteTarget.tenantId.lastName}`
                     : "this tenant")}
               </strong>{" "}
-              and every user under them. This action cannot be undone.
+              and <strong>disables their account</strong> — including their team
+              — even if the subscription is still active. The tenant's details
+              and data are not deleted. Use Change Plan on the tenant's page to
+              give them a plan again and restore access.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
-              onClick={() =>
-                deleteTarget?.tenantId &&
-                deleteMutation.mutate(deleteTarget.tenantId._id)
-              }
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                // Keep the dialog open until the request finishes.
+                e.preventDefault();
+                if (deleteTarget?.tenantId)
+                  deleteMutation.mutate(deleteTarget.tenantId._id);
+              }}
             >
               {deleteMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                "Delete Tenant"
+                "Delete Subscription"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
