@@ -43,6 +43,8 @@ type ProfileData = {
   email: string;
   phone?: string;
   createdAt: string;
+  // "super_admin" = the platform owner; "admin" = a user the owner added.
+  adminRole?: string;
 };
 
 type PlatformModule = {
@@ -398,7 +400,9 @@ export default function SystemSettings() {
                         {profile?.firstName} {profile?.lastName}
                       </h3>
                       <Badge variant="secondary" className="text-xs mt-0.5">
-                        Super Admin
+                        {profile?.adminRole === "admin"
+                          ? "Admin"
+                          : "Super Admin"}
                       </Badge>
                       <p className="text-xs text-muted-foreground mt-1">
                         {profile?.email}

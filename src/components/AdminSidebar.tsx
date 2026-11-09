@@ -17,9 +17,10 @@ import {
   Newspaper,
   Mail,
   UserCog,
+  LogOut,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Collapsible,
   CollapsibleContent,
@@ -41,7 +42,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 const mainItems = [
@@ -88,6 +89,18 @@ export function AdminSidebar() {
   useEffect(() => {
     if (templatesActive) setTemplatesOpen(true);
   }, [templatesActive]);
+
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // The API has no server-side session to end — the token is all there is.
+  // Clearing the query cache too matters: otherwise the next person to sign
+  // in on this browser would briefly see the previous user's profile.
+  const handleLogout = () => {
+    localStorage.removeItem("adminToken");
+    queryClient.clear();
+    navigate("/login", { replace: true });
+  };
 
   const { data, isLoading, isError } = useQuery<profileData>({
     queryKey: ["superadmin-profile"],
@@ -190,23 +203,37 @@ export function AdminSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 gap-2">
         {!collapsed && (
           <div className="flex items-center gap-3 rounded-lg bg-muted p-3">
-            <div className="gradient-accent h-8 w-8 rounded-full flex items-center justify-center">
+            <div className="gradient-accent h-8 w-8 shrink-0 rounded-full flex items-center justify-center">
               <span className="text-xs font-semibold text-primary-foreground">
                 {data?.firstName?.[0]?.toUpperCase()}
                 {data?.lastName?.[0]?.toUpperCase()}
               </span>
             </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
                 {data?.firstName + " " + data?.lastName}
               </p>
-              <p className="text-xs text-muted-foreground">{data?.email}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {data?.email}
+              </p>
             </div>
           </div>
         )}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={handleLogout}
+              tooltip="Log out"
+              className="text-destructive hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span>Log out</span>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   );
